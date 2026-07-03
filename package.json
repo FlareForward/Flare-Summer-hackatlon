@@ -1,0 +1,14 @@
+{
+  "name": "flare-summer-vault-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hackathon UI for XRPL users entering Flare carry and LP vaults through Flare Smart Accounts.",
+  "scripts": {
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "lint": "npm --prefix apps/web run lint"
+  },
+  "workspaces": [
+    "apps/web"
+  ]
+}
