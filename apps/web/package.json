@@ -15,7 +15,8 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "viem": "^2.47.6",
-    "wagmi": "^2.19.5"
+    "wagmi": "^2.19.5",
+    "xumm-oauth2-pkce": "^2.8.7"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
@@ -24,4 +25,3 @@
     "typescript": "^5.9.3"
   }
 }
-

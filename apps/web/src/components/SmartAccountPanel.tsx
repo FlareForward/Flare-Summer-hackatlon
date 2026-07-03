@@ -14,6 +14,7 @@ import {
   type FsaCall,
 } from '@/lib/fsa';
 import { createXamanPayload, getXamanPayloadStatus, type XamanPayload, type XamanPayloadStatus } from '@/lib/xaman';
+import { useXamanConnect } from '@/lib/xamanConnect';
 import { formatToken, isZeroAddress, shortAddress } from '@/lib/format';
 
 type Props = {
@@ -44,6 +45,7 @@ export function SmartAccountPanel({ vault }: Props) {
 
   const { address: connectedAddress } = useAccount();
   const { writeContractAsync, isPending: isRegistering } = useWriteContract();
+  const { account: xamanAccount, connecting: xamanConnecting, error: xamanConnectError, connect: connectXaman, disconnect: disconnectXaman } = useXamanConnect();
 
   const publicClient = useMemo(
     () =>
@@ -54,14 +56,15 @@ export function SmartAccountPanel({ vault }: Props) {
     [],
   );
 
-  async function resolveSmartAccount() {
+  async function resolveSmartAccount(addressOverride?: string) {
+    const lookupAddress = addressOverride ?? xrplAddress;
     setStatus('Resolving smart account...');
     try {
       const account = await publicClient.readContract({
         address: MASTER_ACCOUNT_CONTROLLER,
         abi: masterAccountControllerAbi,
         functionName: 'getPersonalAccount',
-        args: [xrplAddress],
+        args: [lookupAddress],
       });
       const operators = await publicClient.readContract({
         address: MASTER_ACCOUNT_CONTROLLER,
@@ -188,6 +191,13 @@ export function SmartAccountPanel({ vault }: Props) {
   }
 
   useEffect(() => {
+    if (!xamanAccount) return;
+    setXrplAddress(xamanAccount);
+    resolveSmartAccount(xamanAccount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [xamanAccount]);
+
+  useEffect(() => {
     if (!xamanPayload || xamanStatus?.resolved) return undefined;
     const interval = setInterval(async () => {
       try {
@@ -247,13 +257,31 @@ export function SmartAccountPanel({ vault }: Props) {
         <h2>Xaman to Flare Smart Account</h2>
       </div>
 
+      <div className="actions">
+        {xamanAccount ? (
+          <>
+            <button type="button" disabled>
+              Connected: {shortAddress(xamanAccount)}
+            </button>
+            <button type="button" onClick={disconnectXaman}>
+              Disconnect Xaman
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={connectXaman} disabled={xamanConnecting}>
+            {xamanConnecting ? 'Waiting for Xaman...' : 'Connect Xaman'}
+          </button>
+        )}
+      </div>
+      {xamanConnectError ? <p className="status-line">{xamanConnectError}</p> : null}
+
       <div className="form-grid">
         <label>
           XRPL address
           <input
             value={xrplAddress}
             onChange={(event) => setXrplAddress(event.target.value)}
-            placeholder="r..."
+            placeholder="r... (or use Connect Xaman above)"
           />
         </label>
         <label>
@@ -271,7 +299,7 @@ export function SmartAccountPanel({ vault }: Props) {
       </div>
 
       <div className="actions">
-        <button type="button" onClick={resolveSmartAccount}>
+        <button type="button" onClick={() => resolveSmartAccount()}>
           Resolve account
         </button>
         <button type="button" onClick={() => refreshBalances()}>
