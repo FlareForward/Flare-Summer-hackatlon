@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPublicClient, http, isAddress, type Address, type Hex } from 'viem';
 import { useAccount, useWriteContract } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { flare } from '@/config/wagmi';
 import { erc20Abi, masterAccountControllerAbi } from '@/config/abis';
 import { FXRP_ADDRESS, MASTER_ACCOUNT_CONTROLLER, type VaultConfig } from '@/config/vaults';
@@ -22,12 +23,11 @@ type Props = {
 };
 
 const EXECUTION_POLL_LIMIT = 60;
+const DEFAULT_FEE_DROPS = '12';
 
 export function SmartAccountPanel({ vault }: Props) {
   const [xrplAddress, setXrplAddress] = useState('');
   const [amount, setAmount] = useState('10');
-  const [walletId, setWalletId] = useState('0');
-  const [feeDrops, setFeeDrops] = useState('12');
   const [personalAccount, setPersonalAccount] = useState<Address | undefined>();
   const [operatorAddress, setOperatorAddress] = useState('');
   const [fxrpBalance, setFxrpBalance] = useState<bigint | undefined>();
@@ -40,11 +40,15 @@ export function SmartAccountPanel({ vault }: Props) {
   const [xamanStatus, setXamanStatus] = useState<XamanPayloadStatus | undefined>();
   const [baselineShareBalance, setBaselineShareBalance] = useState<bigint | undefined>();
   const [executing, setExecuting] = useState(false);
+  const [entering, setEntering] = useState(false);
   const [status, setStatus] = useState('');
   const executionAttempts = useRef(0);
+  const pendingRegistration = useRef<{ calls: FsaCall[]; reference: Hex } | null>(null);
+  const [awaitingWalletConnect, setAwaitingWalletConnect] = useState(false);
 
   const { address: connectedAddress } = useAccount();
-  const { writeContractAsync, isPending: isRegistering } = useWriteContract();
+  const { writeContractAsync } = useWriteContract();
+  const { openConnectModal } = useConnectModal();
   const { account: xamanAccount, connecting: xamanConnecting, error: xamanConnectError, connect: connectXaman, disconnect: disconnectXaman } = useXamanConnect();
 
   const publicClient = useMemo(
@@ -55,31 +59,6 @@ export function SmartAccountPanel({ vault }: Props) {
       }),
     [],
   );
-
-  async function resolveSmartAccount(addressOverride?: string) {
-    const lookupAddress = addressOverride ?? xrplAddress;
-    setStatus('Resolving smart account...');
-    try {
-      const account = await publicClient.readContract({
-        address: MASTER_ACCOUNT_CONTROLLER,
-        abi: masterAccountControllerAbi,
-        functionName: 'getPersonalAccount',
-        args: [lookupAddress],
-      });
-      const operators = await publicClient.readContract({
-        address: MASTER_ACCOUNT_CONTROLLER,
-        abi: masterAccountControllerAbi,
-        functionName: 'getXrplProviderWallets',
-        args: [],
-      });
-      setPersonalAccount(account);
-      setOperatorAddress(operators[0] || '');
-      setStatus('Smart account resolved.');
-      await refreshBalances(account);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Unable to resolve smart account.');
-    }
-  }
 
   async function refreshBalances(account = personalAccount) {
     if (!account || !isAddress(account)) return;
@@ -105,97 +84,158 @@ export function SmartAccountPanel({ vault }: Props) {
     }
   }
 
-  function generateDepositPlan() {
-    if (!personalAccount || isZeroAddress(personalAccount)) {
-      setStatus('Resolve a PersonalAccount first.');
-      return;
-    }
-    const nextCalls = buildDepositCalls(vault, amount, personalAccount);
-    setCalls(nextCalls);
-    setCallHash(undefined);
-    setPaymentReference(undefined);
-    setRegisterTxHash(undefined);
-    setXamanPayload(undefined);
-    setXamanStatus(undefined);
-    setStatus('Deposit call plan generated.');
-  }
-
-  async function encodeInstruction() {
-    if (calls.length === 0) {
-      setStatus('Build a deposit plan first.');
-      return;
-    }
-    setStatus('Encoding custom instruction hash on MasterAccountController...');
+  async function registerAndPay(callsForRegistration: FsaCall[], reference: Hex, operator: string) {
+    setStatus('Registering instruction on Flare (small FLR gas fee, one signature)...');
     try {
-      const hash = await publicClient.readContract({
-        address: MASTER_ACCOUNT_CONTROLLER,
-        abi: masterAccountControllerAbi,
-        functionName: 'encodeCustomInstruction',
-        args: [toCustomCalls(calls)],
-      });
-      const reference = buildCustomInstructionReference(Number(walletId) || 0, hash);
-      setCallHash(hash);
-      setPaymentReference(reference);
-      setStatus('Instruction hash encoded. Register it on Flare, then create the Xaman payment.');
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Unable to encode instruction hash.');
-    }
-  }
-
-  async function registerInstruction() {
-    if (calls.length === 0) {
-      setStatus('Build a deposit plan first.');
-      return;
-    }
-    if (!connectedAddress) {
-      setStatus('Connect a Flare wallet (top right) to register this instruction. This only publishes the call data on-chain and costs a small FLR gas fee — it does not move your funds.');
-      return;
-    }
-    setStatus('Registering instruction on MasterAccountController...');
-    try {
-      const hash = await writeContractAsync({
+      const txHash = await writeContractAsync({
         address: MASTER_ACCOUNT_CONTROLLER,
         abi: masterAccountControllerAbi,
         functionName: 'registerCustomInstruction',
-        args: [toCustomCalls(calls)],
+        args: [toCustomCalls(callsForRegistration)],
         chainId: flare.id,
       });
-      setRegisterTxHash(hash);
+      setRegisterTxHash(txHash);
       setStatus('Registration submitted. Waiting for confirmation...');
-      await publicClient.waitForTransactionReceipt({ hash });
-      setStatus('Instruction registered on Flare. Create the Xaman payment to trigger execution.');
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Instruction registration failed.');
+      setEntering(false);
+      return;
     }
-  }
 
-  async function createPayload() {
-    if (!paymentReference) {
-      setStatus('Encode the instruction hash first.');
-      return;
-    }
-    if (!operatorAddress) {
-      setStatus('Resolve the operator XRPL address first.');
-      return;
-    }
-    setStatus('Creating Xaman payload...');
+    setStatus('Creating Xaman payment...');
     try {
-      const payload = await createXamanPayload(operatorAddress, feeDrops || '1', paymentReference);
+      const payload = await createXamanPayload(operator, DEFAULT_FEE_DROPS, reference);
       setXamanPayload(payload);
       setXamanStatus(undefined);
       setExecuting(false);
       setStatus('Scan the QR code or open in Xaman to sign the payment.');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Unable to create Xaman payload.');
+      setStatus(error instanceof Error ? error.message : 'Unable to create Xaman payment.');
+    } finally {
+      setEntering(false);
     }
+  }
+
+  async function enterVault() {
+    if (!xrplAddress) {
+      setStatus('Connect Xaman or enter an XRPL address first.');
+      return;
+    }
+    setEntering(true);
+    setXamanPayload(undefined);
+    setXamanStatus(undefined);
+    setStatus('Resolving smart account...');
+
+    let account = personalAccount;
+    let operator = operatorAddress;
+    try {
+      if (!account || !isAddress(account)) {
+        account = await publicClient.readContract({
+          address: MASTER_ACCOUNT_CONTROLLER,
+          abi: masterAccountControllerAbi,
+          functionName: 'getPersonalAccount',
+          args: [xrplAddress],
+        });
+        const operators = await publicClient.readContract({
+          address: MASTER_ACCOUNT_CONTROLLER,
+          abi: masterAccountControllerAbi,
+          functionName: 'getXrplProviderWallets',
+          args: [],
+        });
+        operator = operators[0] || '';
+        setPersonalAccount(account);
+        setOperatorAddress(operator);
+      }
+      await refreshBalances(account);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to resolve smart account.');
+      setEntering(false);
+      return;
+    }
+
+    if (!account || isZeroAddress(account)) {
+      setStatus('Unable to resolve a PersonalAccount for that XRPL address.');
+      setEntering(false);
+      return;
+    }
+    if (!operator) {
+      setStatus('No operator XRPL address found on MasterAccountController.');
+      setEntering(false);
+      return;
+    }
+
+    setStatus('Building deposit plan...');
+    const nextCalls = buildDepositCalls(vault, amount, account);
+    setCalls(nextCalls);
+
+    setStatus('Encoding instruction hash on MasterAccountController...');
+    let reference: Hex;
+    try {
+      const hash = await publicClient.readContract({
+        address: MASTER_ACCOUNT_CONTROLLER,
+        abi: masterAccountControllerAbi,
+        functionName: 'encodeCustomInstruction',
+        args: [toCustomCalls(nextCalls)],
+      });
+      reference = buildCustomInstructionReference(0, hash);
+      setCallHash(hash);
+      setPaymentReference(reference);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to encode instruction hash.');
+      setEntering(false);
+      return;
+    }
+
+    if (!connectedAddress) {
+      pendingRegistration.current = { calls: nextCalls, reference };
+      setAwaitingWalletConnect(true);
+      setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee, does not touch your deposit funds)...');
+      openConnectModal?.();
+      return;
+    }
+
+    await registerAndPay(nextCalls, reference, operator);
   }
 
   useEffect(() => {
     if (!xamanAccount) return;
     setXrplAddress(xamanAccount);
-    resolveSmartAccount(xamanAccount);
+    setStatus('Xaman connected. Resolving smart account...');
+    (async () => {
+      try {
+        const account = await publicClient.readContract({
+          address: MASTER_ACCOUNT_CONTROLLER,
+          abi: masterAccountControllerAbi,
+          functionName: 'getPersonalAccount',
+          args: [xamanAccount],
+        });
+        const operators = await publicClient.readContract({
+          address: MASTER_ACCOUNT_CONTROLLER,
+          abi: masterAccountControllerAbi,
+          functionName: 'getXrplProviderWallets',
+          args: [],
+        });
+        setPersonalAccount(account);
+        setOperatorAddress(operators[0] || '');
+        setStatus('Smart account resolved. Set an amount and click Enter Vault.');
+        await refreshBalances(account);
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'Unable to resolve smart account.');
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [xamanAccount]);
+
+  useEffect(() => {
+    if (awaitingWalletConnect && connectedAddress && pendingRegistration.current) {
+      const { calls: c, reference: r } = pendingRegistration.current;
+      pendingRegistration.current = null;
+      setAwaitingWalletConnect(false);
+      registerAndPay(c, r, operatorAddress);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectedAddress, awaitingWalletConnect]);
 
   useEffect(() => {
     if (!xamanPayload || xamanStatus?.resolved) return undefined;
@@ -214,7 +254,7 @@ export function SmartAccountPanel({ vault }: Props) {
           } else if (result.cancelled) {
             setStatus('Xaman payload was cancelled.');
           } else if (result.expired) {
-            setStatus('Xaman payload expired. Create a new one.');
+            setStatus('Xaman payload expired. Click Enter Vault to try again.');
           }
         }
       } catch {
@@ -248,7 +288,7 @@ export function SmartAccountPanel({ vault }: Props) {
   }, [executing, baselineShareBalance, shareBalance]);
 
   const xamanTemplate =
-    paymentReference && operatorAddress ? buildXamanPaymentTemplate(operatorAddress, paymentReference, feeDrops) : undefined;
+    paymentReference && operatorAddress ? buildXamanPaymentTemplate(operatorAddress, paymentReference, DEFAULT_FEE_DROPS) : undefined;
 
   return (
     <section className="panel smart-panel">
@@ -288,34 +328,14 @@ export function SmartAccountPanel({ vault }: Props) {
           Deposit amount
           <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
         </label>
-        <label>
-          Wallet ID
-          <input value={walletId} onChange={(event) => setWalletId(event.target.value)} inputMode="numeric" />
-        </label>
-        <label>
-          Instruction fee (drops)
-          <input value={feeDrops} onChange={(event) => setFeeDrops(event.target.value)} inputMode="numeric" />
-        </label>
       </div>
 
       <div className="actions">
-        <button type="button" onClick={() => resolveSmartAccount()}>
-          Resolve account
+        <button type="button" onClick={enterVault} disabled={entering}>
+          {entering ? 'Working...' : `Enter ${vault.name}`}
         </button>
         <button type="button" onClick={() => refreshBalances()}>
           Refresh balances
-        </button>
-        <button type="button" onClick={generateDepositPlan}>
-          Build deposit plan
-        </button>
-        <button type="button" onClick={encodeInstruction} disabled={calls.length === 0}>
-          Encode instruction hash
-        </button>
-        <button type="button" onClick={registerInstruction} disabled={calls.length === 0 || isRegistering}>
-          {isRegistering ? 'Registering...' : 'Register on Flare'}
-        </button>
-        <button type="button" onClick={createPayload} disabled={!paymentReference}>
-          Create Xaman payment
         </button>
       </div>
 
@@ -373,7 +393,7 @@ export function SmartAccountPanel({ vault }: Props) {
       {xamanTemplate ? (
         <div className="payload-box">
           <h3>Xaman Payment template</h3>
-          <p>This is the XRPL Payment that gets signed. Instruction fee is an editable estimate — confirm the real fee with the operator before mainnet use.</p>
+          <p>This is the XRPL Payment that gets signed. Instruction fee is a placeholder — confirm the real fee with the operator before mainnet use.</p>
           <pre>{JSON.stringify(xamanTemplate, null, 2)}</pre>
         </div>
       ) : null}
