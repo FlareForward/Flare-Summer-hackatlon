@@ -74,6 +74,8 @@ export const carryVaultAbi = [
     outputs: [{ name: 'shares', type: 'uint256' }],
   },
   {
+    // Single atomic call: burns `shares`, pays out pro-rata FXRP (collateralToken) plus any
+    // accrued USDT0 surplus to msg.sender. There is no separate claim step on this contract.
     type: 'function',
     name: 'requestWithdrawal',
     stateMutability: 'nonpayable',
@@ -81,11 +83,12 @@ export const carryVaultAbi = [
     outputs: [{ name: 'requestId', type: 'uint256' }],
   },
   {
+    // Pays out accrued USDT0 surplus to msg.sender without touching share balance / FXRP principal.
     type: 'function',
-    name: 'claimWithdrawal',
+    name: 'claimSurplus',
     stateMutability: 'nonpayable',
-    inputs: [{ name: 'requestId', type: 'uint256' }],
-    outputs: [],
+    inputs: [],
+    outputs: [{ name: 'usdt0Paid', type: 'uint256' }],
   },
   {
     type: 'function',
@@ -100,6 +103,53 @@ export const carryVaultAbi = [
     stateMutability: 'view',
     inputs: [{ name: 'account', type: 'address' }],
     outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+// SparkDEX (Algebra Integral) SwapRouter at 0x69D57B9D705eaD73a5d2f2476C30c55bD755cc2F.
+// Verified on-chain: this router's factory() == the FXRP/USDT0 pool's factory(), and the
+// factory's poolByPair(FXRP, USDT0) resolves to that exact pool, confirming `deployer` should
+// be the zero address (the pool is the default/non-custom pool for this pair, not a plugin pool).
+export const swapRouterAbi = [
+  {
+    type: 'function',
+    name: 'exactInputSingle',
+    stateMutability: 'payable',
+    inputs: [
+      {
+        name: 'params',
+        type: 'tuple',
+        components: [
+          { name: 'tokenIn', type: 'address' },
+          { name: 'tokenOut', type: 'address' },
+          { name: 'deployer', type: 'address' },
+          { name: 'recipient', type: 'address' },
+          { name: 'deadline', type: 'uint256' },
+          { name: 'amountIn', type: 'uint256' },
+          { name: 'amountOutMinimum', type: 'uint256' },
+          { name: 'limitSqrtPrice', type: 'uint160' },
+        ],
+      },
+    ],
+    outputs: [{ name: 'amountOut', type: 'uint256' }],
+  },
+] as const;
+
+// Minimal Algebra pool ABI, used only to read a live spot price for slippage protection.
+export const algebraPoolAbi = [
+  {
+    type: 'function',
+    name: 'globalState',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      { name: 'price', type: 'uint160' },
+      { name: 'tick', type: 'int24' },
+      { name: 'lastFee', type: 'uint16' },
+      { name: 'pluginConfig', type: 'uint8' },
+      { name: 'communityFee', type: 'uint16' },
+      { name: 'unlocked', type: 'bool' },
+    ],
   },
 ] as const;
 

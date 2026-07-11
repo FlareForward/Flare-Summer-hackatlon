@@ -5,11 +5,20 @@ import { createPublicClient, http, isAddress, type Address, type Hex } from 'vie
 import { useAccount, useWriteContract } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { flare } from '@/config/wagmi';
-import { erc20Abi, masterAccountControllerAbi } from '@/config/abis';
-import { FXRP_ADDRESS, MASTER_ACCOUNT_CONTROLLER, type VaultConfig } from '@/config/vaults';
+import { algebraPoolAbi, erc20Abi, masterAccountControllerAbi } from '@/config/abis';
 import {
+  FXRP_ADDRESS,
+  FXRP_USDT0_POOL,
+  MASTER_ACCOUNT_CONTROLLER,
+  USDT0_ADDRESS,
+  type VaultConfig,
+} from '@/config/vaults';
+import {
+  buildClaimSurplusCalls,
   buildCustomInstructionReference,
   buildDepositCalls,
+  buildSwapUsdt0ToFxrpCalls,
+  buildWithdrawCalls,
   buildXamanPaymentTemplate,
   toCustomCalls,
   type FsaCall,
@@ -27,20 +36,22 @@ const DEFAULT_FEE_DROPS = '12';
 
 export function SmartAccountPanel({ vault }: Props) {
   const [xrplAddress, setXrplAddress] = useState('');
-  const [amount, setAmount] = useState('10');
+  const [amount, setAmount] = useState('0.01');
+  const [withdrawShares, setWithdrawShares] = useState('0.01');
   const [personalAccount, setPersonalAccount] = useState<Address | undefined>();
   const [operatorAddress, setOperatorAddress] = useState('');
   const [fxrpBalance, setFxrpBalance] = useState<bigint | undefined>();
   const [shareBalance, setShareBalance] = useState<bigint | undefined>();
+  const [usdt0Balance, setUsdt0Balance] = useState<bigint | undefined>();
   const [calls, setCalls] = useState<FsaCall[]>([]);
   const [callHash, setCallHash] = useState<Hex | undefined>();
   const [paymentReference, setPaymentReference] = useState<Hex | undefined>();
   const [registerTxHash, setRegisterTxHash] = useState<Hex | undefined>();
   const [xamanPayload, setXamanPayload] = useState<XamanPayload | undefined>();
   const [xamanStatus, setXamanStatus] = useState<XamanPayloadStatus | undefined>();
-  const [baselineShareBalance, setBaselineShareBalance] = useState<bigint | undefined>();
+  const [baseline, setBaseline] = useState<{ fxrp?: bigint; shares?: bigint; usdt0?: bigint } | undefined>();
   const [executing, setExecuting] = useState(false);
-  const [entering, setEntering] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const executionAttempts = useRef(0);
   const pendingRegistration = useRef<{ calls: FsaCall[]; reference: Hex } | null>(null);
@@ -63,7 +74,7 @@ export function SmartAccountPanel({ vault }: Props) {
   async function refreshBalances(account = personalAccount) {
     if (!account || !isAddress(account)) return;
     try {
-      const [fxrp, shares] = await Promise.all([
+      const [fxrp, shares, usdt0] = await Promise.all([
         publicClient.readContract({
           address: FXRP_ADDRESS,
           abi: erc20Abi,
@@ -76,9 +87,16 @@ export function SmartAccountPanel({ vault }: Props) {
           functionName: 'balanceOf',
           args: [account],
         }),
+        publicClient.readContract({
+          address: USDT0_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [account],
+        }),
       ]);
       setFxrpBalance(fxrp);
       setShareBalance(shares);
+      setUsdt0Balance(usdt0);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Unable to read balances.');
     }
@@ -99,7 +117,7 @@ export function SmartAccountPanel({ vault }: Props) {
       await publicClient.waitForTransactionReceipt({ hash: txHash });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Instruction registration failed.');
-      setEntering(false);
+      setBusy(false);
       return;
     }
 
@@ -113,16 +131,17 @@ export function SmartAccountPanel({ vault }: Props) {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Unable to create Xaman payment.');
     } finally {
-      setEntering(false);
+      setBusy(false);
     }
   }
 
-  async function enterVault() {
+  async function prepareInstruction(
+    buildCalls: (account: Address) => FsaCall[],
+  ): Promise<{ account: Address; operator: string; calls: FsaCall[]; reference: Hex } | null> {
     if (!xrplAddress) {
       setStatus('Connect Xaman or enter an XRPL address first.');
-      return;
+      return null;
     }
-    setEntering(true);
     setXamanPayload(undefined);
     setXamanStatus(undefined);
     setStatus('Resolving smart account...');
@@ -150,27 +169,23 @@ export function SmartAccountPanel({ vault }: Props) {
       await refreshBalances(account);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Unable to resolve smart account.');
-      setEntering(false);
-      return;
+      return null;
     }
 
     if (!account || isZeroAddress(account)) {
       setStatus('Unable to resolve a PersonalAccount for that XRPL address.');
-      setEntering(false);
-      return;
+      return null;
     }
     if (!operator) {
       setStatus('No operator XRPL address found on MasterAccountController.');
-      setEntering(false);
-      return;
+      return null;
     }
 
-    setStatus('Building deposit plan...');
-    const nextCalls = buildDepositCalls(vault, amount, account);
+    setStatus('Building call plan...');
+    const nextCalls = buildCalls(account);
     setCalls(nextCalls);
 
     setStatus('Encoding instruction hash on MasterAccountController...');
-    let reference: Hex;
     try {
       const hash = await publicClient.readContract({
         address: MASTER_ACCOUNT_CONTROLLER,
@@ -178,19 +193,112 @@ export function SmartAccountPanel({ vault }: Props) {
         functionName: 'encodeCustomInstruction',
         args: [toCustomCalls(nextCalls)],
       });
-      reference = buildCustomInstructionReference(0, hash);
+      const reference = buildCustomInstructionReference(0, hash);
       setCallHash(hash);
       setPaymentReference(reference);
+      return { account, operator, calls: nextCalls, reference };
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Unable to encode instruction hash.');
-      setEntering(false);
+      return null;
+    }
+  }
+
+  async function enterVault() {
+    setBusy(true);
+    const prepared = await prepareInstruction((account) => buildDepositCalls(vault, amount, account));
+    if (!prepared) {
+      setBusy(false);
       return;
     }
+    const { operator, calls: nextCalls, reference } = prepared;
 
     if (!connectedAddress) {
       pendingRegistration.current = { calls: nextCalls, reference };
       setAwaitingWalletConnect(true);
       setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee, does not touch your deposit funds)...');
+      openConnectModal?.();
+      return;
+    }
+
+    await registerAndPay(nextCalls, reference, operator);
+  }
+
+  async function withdrawVault() {
+    setBusy(true);
+    const prepared = await prepareInstruction(() => buildWithdrawCalls(vault, withdrawShares));
+    if (!prepared) {
+      setBusy(false);
+      return;
+    }
+    const { operator, calls: nextCalls, reference } = prepared;
+
+    if (!connectedAddress) {
+      pendingRegistration.current = { calls: nextCalls, reference };
+      setAwaitingWalletConnect(true);
+      setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee, does not touch your withdrawn funds)...');
+      openConnectModal?.();
+      return;
+    }
+
+    await registerAndPay(nextCalls, reference, operator);
+  }
+
+  async function claimSurplus() {
+    setBusy(true);
+    const prepared = await prepareInstruction(() => buildClaimSurplusCalls(vault));
+    if (!prepared) {
+      setBusy(false);
+      return;
+    }
+    const { operator, calls: nextCalls, reference } = prepared;
+
+    if (!connectedAddress) {
+      pendingRegistration.current = { calls: nextCalls, reference };
+      setAwaitingWalletConnect(true);
+      setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee)...');
+      openConnectModal?.();
+      return;
+    }
+
+    await registerAndPay(nextCalls, reference, operator);
+  }
+
+  async function swapUsdt0ToFxrp() {
+    if (!personalAccount || !usdt0Balance || usdt0Balance === BigInt(0)) {
+      setStatus('No USDT0 surplus to swap. Claim surplus (or withdraw) first.');
+      return;
+    }
+    setBusy(true);
+    setStatus('Reading live pool price...');
+    let amountOutMinimum: bigint;
+    try {
+      const [sqrtPriceX96] = await publicClient.readContract({
+        address: FXRP_USDT0_POOL,
+        abi: algebraPoolAbi,
+        functionName: 'globalState',
+      });
+      // price = (sqrtPriceX96/2^96)^2 = USDT0 per FXRP (both 6dp, so raw units apply directly).
+      // FXRP out = usdt0In * 2^192 / sqrtPriceX96^2, then apply a 1% slippage tolerance.
+      const q192 = BigInt(1) << BigInt(192);
+      const expectedFxrpOut = (usdt0Balance * q192) / (sqrtPriceX96 * sqrtPriceX96);
+      amountOutMinimum = (expectedFxrpOut * BigInt(99)) / BigInt(100);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to read pool price.');
+      setBusy(false);
+      return;
+    }
+
+    const prepared = await prepareInstruction((account) => buildSwapUsdt0ToFxrpCalls(account, usdt0Balance, amountOutMinimum));
+    if (!prepared) {
+      setBusy(false);
+      return;
+    }
+    const { operator, calls: nextCalls, reference } = prepared;
+
+    if (!connectedAddress) {
+      pendingRegistration.current = { calls: nextCalls, reference };
+      setAwaitingWalletConnect(true);
+      setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee)...');
       openConnectModal?.();
       return;
     }
@@ -248,13 +356,13 @@ export function SmartAccountPanel({ vault }: Props) {
             setStatus(
               `Signed on XRPL${result.txid ? ` (${shortAddress(result.txid)})` : ''}. Waiting for the operator to submit proof and execute on Flare...`,
             );
-            setBaselineShareBalance(shareBalance);
+            setBaseline({ fxrp: fxrpBalance, shares: shareBalance, usdt0: usdt0Balance });
             executionAttempts.current = 0;
             setExecuting(true);
           } else if (result.cancelled) {
             setStatus('Xaman payload was cancelled.');
           } else if (result.expired) {
-            setStatus('Xaman payload expired. Click Enter Vault to try again.');
+            setStatus('Xaman payload expired. Try the action again.');
           }
         }
       } catch {
@@ -262,7 +370,7 @@ export function SmartAccountPanel({ vault }: Props) {
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [xamanPayload, xamanStatus?.resolved, shareBalance]);
+  }, [xamanPayload, xamanStatus?.resolved, fxrpBalance, shareBalance, usdt0Balance]);
 
   useEffect(() => {
     if (!executing || !personalAccount) return undefined;
@@ -280,12 +388,16 @@ export function SmartAccountPanel({ vault }: Props) {
   }, [executing, personalAccount]);
 
   useEffect(() => {
-    if (!executing || baselineShareBalance === undefined || shareBalance === undefined) return;
-    if (shareBalance !== baselineShareBalance) {
+    if (!executing || !baseline) return;
+    const changed =
+      (baseline.fxrp !== undefined && fxrpBalance !== undefined && fxrpBalance !== baseline.fxrp) ||
+      (baseline.shares !== undefined && shareBalance !== undefined && shareBalance !== baseline.shares) ||
+      (baseline.usdt0 !== undefined && usdt0Balance !== undefined && usdt0Balance !== baseline.usdt0);
+    if (changed) {
       setExecuting(false);
-      setStatus('Execution complete — vault shares updated on Flare.');
+      setStatus('Execution complete — balances updated on Flare.');
     }
-  }, [executing, baselineShareBalance, shareBalance]);
+  }, [executing, baseline, fxrpBalance, shareBalance, usdt0Balance]);
 
   const xamanTemplate =
     paymentReference && operatorAddress ? buildXamanPaymentTemplate(operatorAddress, paymentReference, DEFAULT_FEE_DROPS) : undefined;
@@ -331,13 +443,39 @@ export function SmartAccountPanel({ vault }: Props) {
       </div>
 
       <div className="actions">
-        <button type="button" onClick={enterVault} disabled={entering}>
-          {entering ? 'Working...' : `Enter ${vault.name}`}
+        <button type="button" onClick={enterVault} disabled={busy}>
+          {busy ? 'Working...' : `Enter ${vault.name}`}
         </button>
         <button type="button" onClick={() => refreshBalances()}>
           Refresh balances
         </button>
       </div>
+
+      {vault.supportsCarryWithdrawals ? (
+        <>
+          <div className="form-grid">
+            <label>
+              Withdraw amount ({vault.token})
+              <input value={withdrawShares} onChange={(event) => setWithdrawShares(event.target.value)} inputMode="decimal" />
+            </label>
+          </div>
+          <div className="actions">
+            <button type="button" onClick={withdrawVault} disabled={busy}>
+              {busy ? 'Working...' : `Withdraw from ${vault.name}`}
+            </button>
+            <button type="button" onClick={claimSurplus} disabled={busy}>
+              {busy ? 'Working...' : 'Claim USDT0 surplus'}
+            </button>
+            <button type="button" onClick={swapUsdt0ToFxrp} disabled={busy || !usdt0Balance}>
+              {busy ? 'Working...' : 'Swap USDT0 surplus -> FXRP'}
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="status-line">
+          Withdrawals aren&apos;t wired up for this vault in the XRPL testing UI. Use the FXRP Carry Vault to test the withdraw path.
+        </p>
+      )}
 
       <div className="stats-grid">
         <div>
@@ -350,7 +488,11 @@ export function SmartAccountPanel({ vault }: Props) {
         </div>
         <div>
           <span>{vault.token} shares</span>
-          <strong>{formatToken(shareBalance, vault.depositMode === 'erc4626' ? 18 : 6)}</strong>
+          <strong>{formatToken(shareBalance, vault.shareDecimals)}</strong>
+        </div>
+        <div>
+          <span>USDT0 surplus</span>
+          <strong>{formatToken(usdt0Balance, 6, 'USDT0')}</strong>
         </div>
         <div>
           <span>Operator XRPL</span>
