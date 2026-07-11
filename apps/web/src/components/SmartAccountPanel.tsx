@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPublicClient, http, isAddress, type Address, type Hex } from 'viem';
-import { useAccount, useWriteContract } from 'wagmi';
-import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { flare } from '@/config/wagmi';
 import { algebraPoolAbi, erc20Abi, masterAccountControllerAbi } from '@/config/abis';
 import {
@@ -46,7 +44,6 @@ export function SmartAccountPanel({ vault }: Props) {
   const [calls, setCalls] = useState<FsaCall[]>([]);
   const [callHash, setCallHash] = useState<Hex | undefined>();
   const [paymentReference, setPaymentReference] = useState<Hex | undefined>();
-  const [registerTxHash, setRegisterTxHash] = useState<Hex | undefined>();
   const [xamanPayload, setXamanPayload] = useState<XamanPayload | undefined>();
   const [xamanStatus, setXamanStatus] = useState<XamanPayloadStatus | undefined>();
   const [baseline, setBaseline] = useState<{ fxrp?: bigint; shares?: bigint; usdt0?: bigint } | undefined>();
@@ -54,12 +51,6 @@ export function SmartAccountPanel({ vault }: Props) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const executionAttempts = useRef(0);
-  const pendingRegistration = useRef<{ calls: FsaCall[]; reference: Hex } | null>(null);
-  const [awaitingWalletConnect, setAwaitingWalletConnect] = useState(false);
-
-  const { address: connectedAddress } = useAccount();
-  const { writeContractAsync } = useWriteContract();
-  const { openConnectModal } = useConnectModal();
   const { account: xamanAccount, connecting: xamanConnecting, error: xamanConnectError, connect: connectXaman, disconnect: disconnectXaman } = useXamanConnect();
 
   const publicClient = useMemo(
@@ -102,25 +93,7 @@ export function SmartAccountPanel({ vault }: Props) {
     }
   }
 
-  async function registerAndPay(callsForRegistration: FsaCall[], reference: Hex, operator: string) {
-    setStatus('Registering instruction on Flare (small FLR gas fee, one signature)...');
-    try {
-      const txHash = await writeContractAsync({
-        address: MASTER_ACCOUNT_CONTROLLER,
-        abi: masterAccountControllerAbi,
-        functionName: 'registerCustomInstruction',
-        args: [toCustomCalls(callsForRegistration)],
-        chainId: flare.id,
-      });
-      setRegisterTxHash(txHash);
-      setStatus('Registration submitted. Waiting for confirmation...');
-      await publicClient.waitForTransactionReceipt({ hash: txHash });
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Instruction registration failed.');
-      setBusy(false);
-      return;
-    }
-
+  async function createPayment(reference: Hex, operator: string) {
     setStatus('Creating Xaman payment...');
     try {
       const payload = await createXamanPayload(operator, DEFAULT_FEE_DROPS, reference);
@@ -210,17 +183,8 @@ export function SmartAccountPanel({ vault }: Props) {
       setBusy(false);
       return;
     }
-    const { operator, calls: nextCalls, reference } = prepared;
-
-    if (!connectedAddress) {
-      pendingRegistration.current = { calls: nextCalls, reference };
-      setAwaitingWalletConnect(true);
-      setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee, does not touch your deposit funds)...');
-      openConnectModal?.();
-      return;
-    }
-
-    await registerAndPay(nextCalls, reference, operator);
+    const { operator, reference } = prepared;
+    await createPayment(reference, operator);
   }
 
   async function withdrawVault() {
@@ -230,17 +194,8 @@ export function SmartAccountPanel({ vault }: Props) {
       setBusy(false);
       return;
     }
-    const { operator, calls: nextCalls, reference } = prepared;
-
-    if (!connectedAddress) {
-      pendingRegistration.current = { calls: nextCalls, reference };
-      setAwaitingWalletConnect(true);
-      setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee, does not touch your withdrawn funds)...');
-      openConnectModal?.();
-      return;
-    }
-
-    await registerAndPay(nextCalls, reference, operator);
+    const { operator, reference } = prepared;
+    await createPayment(reference, operator);
   }
 
   async function claimSurplus() {
@@ -250,17 +205,8 @@ export function SmartAccountPanel({ vault }: Props) {
       setBusy(false);
       return;
     }
-    const { operator, calls: nextCalls, reference } = prepared;
-
-    if (!connectedAddress) {
-      pendingRegistration.current = { calls: nextCalls, reference };
-      setAwaitingWalletConnect(true);
-      setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee)...');
-      openConnectModal?.();
-      return;
-    }
-
-    await registerAndPay(nextCalls, reference, operator);
+    const { operator, reference } = prepared;
+    await createPayment(reference, operator);
   }
 
   async function swapUsdt0ToFxrp() {
@@ -293,17 +239,8 @@ export function SmartAccountPanel({ vault }: Props) {
       setBusy(false);
       return;
     }
-    const { operator, calls: nextCalls, reference } = prepared;
-
-    if (!connectedAddress) {
-      pendingRegistration.current = { calls: nextCalls, reference };
-      setAwaitingWalletConnect(true);
-      setStatus('Connect a Flare wallet to authorize registering this instruction (small FLR gas fee)...');
-      openConnectModal?.();
-      return;
-    }
-
-    await registerAndPay(nextCalls, reference, operator);
+    const { operator, reference } = prepared;
+    await createPayment(reference, operator);
   }
 
   useEffect(() => {
@@ -334,16 +271,6 @@ export function SmartAccountPanel({ vault }: Props) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [xamanAccount]);
-
-  useEffect(() => {
-    if (awaitingWalletConnect && connectedAddress && pendingRegistration.current) {
-      const { calls: c, reference: r } = pendingRegistration.current;
-      pendingRegistration.current = null;
-      setAwaitingWalletConnect(false);
-      registerAndPay(c, r, operatorAddress);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectedAddress, awaitingWalletConnect]);
 
   useEffect(() => {
     if (!xamanPayload || xamanStatus?.resolved) return undefined;
@@ -521,12 +448,6 @@ export function SmartAccountPanel({ vault }: Props) {
             <div className="call-row">
               <span>Payment reference (memo)</span>
               <code>{shortAddress(paymentReference)}</code>
-            </div>
-          ) : null}
-          {registerTxHash ? (
-            <div className="call-row">
-              <span>Registration tx</span>
-              <code>{shortAddress(registerTxHash)}</code>
             </div>
           ) : null}
         </div>

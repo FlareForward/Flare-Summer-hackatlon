@@ -1,12 +1,11 @@
 :root {
-  --bg: #07090f;
-  --panel: #10141d;
-  --panel-2: #151b27;
-  --text: #f4f7fb;
-  --muted: #9aa7ba;
-  --border: rgba(255, 255, 255, 0.11);
+  --bg: #080b10;
+  --panel: #111722;
+  --panel-2: #172031;
+  --text: #f6f8fb;
+  --muted: #9aa8ba;
+  --border: rgba(255, 255, 255, 0.12);
   --accent: #e91659;
-  --green: #22c55e;
   --gold: #f4bc62;
 }
 
@@ -18,9 +17,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background:
-    linear-gradient(180deg, rgba(233, 22, 89, 0.14), transparent 360px),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -34,6 +31,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 a {
   color: inherit;
 }
@@ -44,7 +46,7 @@ pre {
 }
 
 .shell {
-  width: min(1180px, calc(100% - 32px));
+  width: min(1120px, calc(100% - 32px));
   margin: 0 auto;
 }
 
@@ -52,8 +54,7 @@ pre {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 28px 0 18px;
+  padding: 22px 0 14px;
 }
 
 .header h1,
@@ -67,60 +68,64 @@ pre {
 }
 
 .eyebrow {
-  margin: 0 0 8px;
-  color: var(--muted);
+  margin: 0 0 6px;
+  color: var(--gold);
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-weight: 800;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(380px, 1.05fr);
-  gap: 18px;
-  padding-bottom: 48px;
+  grid-template-columns: minmax(280px, 0.74fr) minmax(420px, 1.26fr);
+  gap: 16px;
+  padding-bottom: 40px;
 }
 
 .hero,
 .panel,
 .vault-card {
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--panel) 90%, transparent);
   border-radius: 8px;
+  background: var(--panel);
 }
 
 .hero {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 0.75fr);
-  gap: 32px;
-  padding: 30px;
+  grid-template-columns: minmax(0, 0.78fr) minmax(280px, 0.62fr);
+  gap: 20px;
+  padding: 22px;
 }
 
 .hero h2 {
-  max-width: 720px;
-  font-size: clamp(34px, 5vw, 64px);
-  line-height: 0.95;
+  max-width: 700px;
+  font-size: 34px;
+  line-height: 1.08;
 }
 
-.hero p {
+.hero p:last-child {
   align-self: end;
   margin: 0;
   color: var(--muted);
-  font-size: 17px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.5;
 }
 
-.vault-list {
+.vault-list,
+.smart-panel,
+.call-plan,
+.payload-box {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .vault-card {
   display: grid;
-  gap: 13px;
-  padding: 18px;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
   color: var(--text);
   text-align: left;
 }
@@ -139,13 +144,12 @@ pre {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 16px;
+  gap: 14px;
 }
 
 .vault-card h3,
 .call-plan h3,
-.payload-box h3,
-.evidence h3 {
+.payload-box h3 {
   margin: 0;
 }
 
@@ -153,14 +157,13 @@ pre {
 .vault-meta,
 .address-row,
 .status-line,
-.payload-box p,
-.evidence p {
+.payload-box p {
   color: var(--muted);
 }
 
 .vault-card p {
   margin: 0;
-  color: #cad3e2;
+  color: #d4dbe8;
   line-height: 1.45;
 }
 
@@ -177,17 +180,14 @@ pre {
 }
 
 .smart-panel {
-  display: grid;
-  gap: 20px;
-  padding: 22px;
+  padding: 18px;
 }
 
 .form-grid,
-.stats-grid,
-.evidence-grid {
+.stats-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 label {
@@ -202,9 +202,9 @@ input {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #090d14;
+  background: #080c13;
   color: var(--text);
-  padding: 12px 13px;
+  padding: 11px 12px;
 }
 
 .actions {
@@ -214,11 +214,12 @@ input {
 }
 
 .actions button {
+  min-height: 40px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #202838;
   color: var(--text);
-  padding: 11px 14px;
+  padding: 10px 13px;
   font-weight: 700;
 }
 
@@ -229,28 +230,28 @@ input {
 
 .stats-grid > div,
 .call-row,
-.payload-box,
-.evidence-grid > div {
+.payload-box {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.035);
-  padding: 14px;
+  padding: 12px;
 }
 
 .stats-grid span {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: var(--muted);
   font-size: 12px;
 }
 
-.stats-grid strong {
+.stats-grid strong,
+.call-row code {
   overflow-wrap: anywhere;
 }
 
-.call-plan {
-  display: grid;
-  gap: 10px;
+.status-line {
+  margin: 0;
+  line-height: 1.45;
 }
 
 .call-row {
@@ -260,38 +261,26 @@ input {
   gap: 14px;
 }
 
-.payload-box {
-  display: grid;
-  gap: 10px;
-}
-
 .payload-box pre {
   overflow: auto;
-  max-height: 260px;
+  max-height: 220px;
   margin: 0;
   border-radius: 8px;
   background: #07090f;
-  padding: 14px;
+  padding: 12px;
   font-size: 12px;
 }
 
-.evidence {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 20px;
-  padding: 24px;
-}
-
-.evidence-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.payload-box img {
+  border-radius: 8px;
+  background: white;
 }
 
 @media (max-width: 900px) {
   .main-grid,
   .hero,
   .form-grid,
-  .stats-grid,
-  .evidence-grid {
+  .stats-grid {
     grid-template-columns: 1fr;
   }
 

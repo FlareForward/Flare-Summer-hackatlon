@@ -14,18 +14,14 @@ export default function Home() {
       <Header />
       <main className="shell main-grid">
         <section className="hero">
-          <div>
-            <p className="eyebrow">Interoperable Asset Products</p>
-            <h2>XRP users can enter Flare vaults without holding FLR.</h2>
-          </div>
+          <p className="eyebrow">Xaman entry</p>
+          <h2>Deposit FXRP into the live carry vaults.</h2>
           <p>
-            The hackathon build focuses on carry and LP products only. Users connect with an XRPL
-            wallet, resolve their Flare Smart Account, and prepare vault actions that can be signed
-            through Xaman.
+            Connect Xaman, pick a vault, enter an amount, and sign the generated XRPL payment. No WalletConnect step is required in this UI.
           </p>
         </section>
 
-        <section className="vault-list">
+        <section className="vault-list" aria-label="Vaults">
           {VAULTS.map((vault) => (
             <VaultCard
               key={vault.id}
@@ -37,29 +33,7 @@ export default function Home() {
         </section>
 
         <SmartAccountPanel vault={selectedVault} />
-
-        <section className="panel evidence">
-          <div>
-            <p className="eyebrow">What is new here</p>
-            <h2>Hackathon contribution</h2>
-          </div>
-          <div className="evidence-grid">
-            <div>
-              <h3>XRPL entry</h3>
-              <p>Smart Account lookup, PersonalAccount balances, and Xaman-ready payment templates.</p>
-            </div>
-            <div>
-              <h3>Vault gateway</h3>
-              <p>Deposit call generation for FXRP carry and ERC-4626 LP vaults.</p>
-            </div>
-            <div>
-              <h3>Scoped release</h3>
-              <p>No keeper code, no private strategy backend, and no unrelated vaults included.</p>
-            </div>
-          </div>
-        </section>
       </main>
     </>
   );
 }
-
