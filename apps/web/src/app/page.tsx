@@ -17,7 +17,7 @@ export default function Home() {
           <p className="eyebrow">Xaman entry</p>
           <h2>Deposit FXRP into the live carry vaults.</h2>
           <p>
-            Connect Xaman, pick a vault, enter an amount, and sign the generated XRPL payment. No WalletConnect step is required in this UI.
+            Connect Xaman, pick a vault, enter an amount, and sign the generated XRPL payment. No separate Flare wallet step is required.
           </p>
         </section>
 
