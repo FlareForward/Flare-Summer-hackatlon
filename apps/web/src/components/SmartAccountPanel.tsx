@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPublicClient, http, isAddress, type Address, type Hex } from 'viem';
@@ -94,13 +94,13 @@ export function SmartAccountPanel({ vault }: Props) {
   }
 
   async function createPayment(reference: Hex, operator: string) {
-    setStatus('Creating Xaman payment...');
+    setStatus('Creating Xaman request...');
     try {
       const payload = await createXamanPayload(operator, DEFAULT_FEE_DROPS, reference);
       setXamanPayload(payload);
       setXamanStatus(undefined);
       setExecuting(false);
-      setStatus('Scan the QR code or open in Xaman to sign the payment.');
+      setStatus('Open Xaman and sign the payment to submit your vault instruction.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Unable to create Xaman payment.');
     } finally {
@@ -112,12 +112,12 @@ export function SmartAccountPanel({ vault }: Props) {
     buildCalls: (account: Address) => FsaCall[],
   ): Promise<{ account: Address; operator: string; calls: FsaCall[]; reference: Hex } | null> {
     if (!xrplAddress) {
-      setStatus('Connect Xaman or enter an XRPL address first.');
+      setStatus('Connect Xaman or paste your XRPL address first.');
       return null;
     }
     setXamanPayload(undefined);
     setXamanStatus(undefined);
-    setStatus('Resolving smart account...');
+    setStatus('Finding your Flare Smart Account...');
 
     let account = personalAccount;
     let operator = operatorAddress;
@@ -146,7 +146,7 @@ export function SmartAccountPanel({ vault }: Props) {
     }
 
     if (!account || isZeroAddress(account)) {
-      setStatus('Unable to resolve a PersonalAccount for that XRPL address.');
+      setStatus('No Flare Smart Account was found for that XRPL address.');
       return null;
     }
     if (!operator) {
@@ -154,11 +154,10 @@ export function SmartAccountPanel({ vault }: Props) {
       return null;
     }
 
-    setStatus('Building call plan...');
+    setStatus('Preparing your vault instruction...');
     const nextCalls = buildCalls(account);
     setCalls(nextCalls);
 
-    setStatus('Encoding instruction hash on MasterAccountController...');
     try {
       const hash = await publicClient.readContract({
         address: MASTER_ACCOUNT_CONTROLLER,
@@ -211,7 +210,7 @@ export function SmartAccountPanel({ vault }: Props) {
 
   async function swapUsdt0ToFxrp() {
     if (!personalAccount || !usdt0Balance || usdt0Balance === BigInt(0)) {
-      setStatus('No USDT0 surplus to swap. Claim surplus (or withdraw) first.');
+      setStatus('No USDT0 surplus to swap.');
       return;
     }
     setBusy(true);
@@ -223,8 +222,6 @@ export function SmartAccountPanel({ vault }: Props) {
         abi: algebraPoolAbi,
         functionName: 'globalState',
       });
-      // price = (sqrtPriceX96/2^96)^2 = USDT0 per FXRP (both 6dp, so raw units apply directly).
-      // FXRP out = usdt0In * 2^192 / sqrtPriceX96^2, then apply a 1% slippage tolerance.
       const q192 = BigInt(1) << BigInt(192);
       const expectedFxrpOut = (usdt0Balance * q192) / (sqrtPriceX96 * sqrtPriceX96);
       amountOutMinimum = (expectedFxrpOut * BigInt(99)) / BigInt(100);
@@ -246,7 +243,7 @@ export function SmartAccountPanel({ vault }: Props) {
   useEffect(() => {
     if (!xamanAccount) return;
     setXrplAddress(xamanAccount);
-    setStatus('Xaman connected. Resolving smart account...');
+    setStatus('Xaman connected. Finding your Smart Account...');
     (async () => {
       try {
         const account = await publicClient.readContract({
@@ -263,7 +260,7 @@ export function SmartAccountPanel({ vault }: Props) {
         });
         setPersonalAccount(account);
         setOperatorAddress(operators[0] || '');
-        setStatus('Smart account resolved. Set an amount and click Enter Vault.');
+        setStatus('Ready. Enter an amount and sign with Xaman.');
         await refreshBalances(account);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : 'Unable to resolve smart account.');
@@ -280,16 +277,14 @@ export function SmartAccountPanel({ vault }: Props) {
         setXamanStatus(result);
         if (result.resolved) {
           if (result.signed) {
-            setStatus(
-              `Signed on XRPL${result.txid ? ` (${shortAddress(result.txid)})` : ''}. Waiting for the operator to submit proof and execute on Flare...`,
-            );
+            setStatus(`Signed in Xaman${result.txid ? ` (${shortAddress(result.txid)})` : ''}. Waiting for execution on Flare...`);
             setBaseline({ fxrp: fxrpBalance, shares: shareBalance, usdt0: usdt0Balance });
             executionAttempts.current = 0;
             setExecuting(true);
           } else if (result.cancelled) {
-            setStatus('Xaman payload was cancelled.');
+            setStatus('Xaman request was cancelled.');
           } else if (result.expired) {
-            setStatus('Xaman payload expired. Try the action again.');
+            setStatus('Xaman request expired. Try again.');
           }
         }
       } catch {
@@ -307,7 +302,7 @@ export function SmartAccountPanel({ vault }: Props) {
       if (executionAttempts.current >= EXECUTION_POLL_LIMIT) {
         clearInterval(interval);
         setExecuting(false);
-        setStatus('Still waiting on the operator after several minutes. Check the vault balance manually.');
+        setStatus('Still waiting on the operator. Check balances again in a few minutes.');
       }
     }, 5000);
     return () => clearInterval(interval);
@@ -322,7 +317,7 @@ export function SmartAccountPanel({ vault }: Props) {
       (baseline.usdt0 !== undefined && usdt0Balance !== undefined && usdt0Balance !== baseline.usdt0);
     if (changed) {
       setExecuting(false);
-      setStatus('Execution complete — balances updated on Flare.');
+      setStatus('Done. Your balances updated on Flare.');
     }
   }, [executing, baseline, fxrpBalance, shareBalance, usdt0Balance]);
 
@@ -330,157 +325,156 @@ export function SmartAccountPanel({ vault }: Props) {
     paymentReference && operatorAddress ? buildXamanPaymentTemplate(operatorAddress, paymentReference, DEFAULT_FEE_DROPS) : undefined;
 
   return (
-    <section className="panel smart-panel">
-      <div>
-        <p className="eyebrow">XRPL access</p>
-        <h2>Xaman to Flare Smart Account</h2>
+    <section className="panel action-panel">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Step 2</p>
+          <h2>Enter with Xaman</h2>
+        </div>
+        <span className="selected-chip" style={{ borderColor: vault.accent, color: vault.accent }}>
+          {vault.name}
+        </span>
       </div>
 
-      <div className="actions">
-        {xamanAccount ? (
-          <>
-            <button type="button" disabled>
-              Connected: {shortAddress(xamanAccount)}
+      <div className="selected-summary">
+        <div>
+          <span>Estimated APR</span>
+          <strong>{vault.opportunityApr}</strong>
+        </div>
+        <p>{vault.bestFor}</p>
+      </div>
+
+      <div className="step-list">
+        <div className={xamanAccount ? 'flow-step done' : 'flow-step'}>
+          <span>1</span>
+          <div>
+            <strong>Connect Xaman</strong>
+            <p>{xamanAccount ? shortAddress(xamanAccount) : 'Use your XRPL wallet. No FLR wallet needed.'}</p>
+          </div>
+          {xamanAccount ? (
+            <button type="button" className="ghost-button" onClick={disconnectXaman}>Disconnect</button>
+          ) : (
+            <button type="button" onClick={connectXaman} disabled={xamanConnecting}>
+              {xamanConnecting ? 'Waiting...' : 'Connect'}
             </button>
-            <button type="button" onClick={disconnectXaman}>
-              Disconnect Xaman
-            </button>
-          </>
-        ) : (
-          <button type="button" onClick={connectXaman} disabled={xamanConnecting}>
-            {xamanConnecting ? 'Waiting for Xaman...' : 'Connect Xaman'}
+          )}
+        </div>
+
+        <div className="flow-step">
+          <span>2</span>
+          <div>
+            <strong>Choose amount</strong>
+            <p>Deposit FXRP into the selected managed vault.</p>
+          </div>
+          <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" aria-label="Deposit amount" />
+        </div>
+
+        <div className="flow-step">
+          <span>3</span>
+          <div>
+            <strong>Sign once</strong>
+            <p>Xaman signs the payment memo that tells the operator what to execute.</p>
+          </div>
+          <button type="button" onClick={enterVault} disabled={busy}>
+            {busy ? 'Preparing...' : 'Enter vault'}
           </button>
-        )}
+        </div>
       </div>
-      {xamanConnectError ? <p className="status-line">{xamanConnectError}</p> : null}
 
-      <div className="form-grid">
-        <label>
-          XRPL address
+      {!xamanAccount ? (
+        <label className="manual-address">
+          Paste XRPL address instead
           <input
             value={xrplAddress}
             onChange={(event) => setXrplAddress(event.target.value)}
-            placeholder="r... (or use Connect Xaman above)"
+            placeholder="r..."
           />
         </label>
-        <label>
-          Deposit amount
-          <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
-        </label>
+      ) : null}
+
+      {xamanConnectError ? <p className="status-line warning">{xamanConnectError}</p> : null}
+      {status ? <p className="status-line">{status}</p> : null}
+
+      {xamanPayload ? (
+        <div className="sign-box">
+          <div>
+            <h3>Sign in Xaman</h3>
+            <p>
+              {xamanStatus?.signed
+                ? `Signed. XRPL tx: ${xamanStatus.txid ?? 'pending'}`
+                : xamanStatus?.cancelled
+                  ? 'Cancelled in Xaman.'
+                  : xamanStatus?.expired
+                    ? 'Expired.'
+                    : 'Waiting for signature...'}
+            </p>
+            {xamanPayload.deeplink ? (
+              <a href={xamanPayload.deeplink} target="_blank" rel="noreferrer" className="primary-link">
+                Open in Xaman
+              </a>
+            ) : null}
+          </div>
+          {xamanPayload.qrPng ? <img src={xamanPayload.qrPng} alt="Xaman sign QR code" width={156} height={156} /> : null}
+        </div>
+      ) : null}
+
+      <div className="account-strip">
+        <div>
+          <span>Smart Account</span>
+          <strong>{shortAddress(personalAccount)}</strong>
+        </div>
+        <div>
+          <span>FXRP</span>
+          <strong>{formatToken(fxrpBalance, 6, 'FXRP')}</strong>
+        </div>
+        <div>
+          <span>Vault shares</span>
+          <strong>{formatToken(shareBalance, vault.shareDecimals)}</strong>
+        </div>
       </div>
 
-      <div className="actions">
-        <button type="button" onClick={enterVault} disabled={busy}>
-          {busy ? 'Working...' : `Enter ${vault.name}`}
-        </button>
-        <button type="button" onClick={() => refreshBalances()}>
-          Refresh balances
-        </button>
-      </div>
-
-      {vault.supportsCarryWithdrawals ? (
-        <>
-          <div className="form-grid">
+      <details className="advanced-box">
+        <summary>Advanced actions and technical details</summary>
+        <div className="advanced-content">
+          <div className="manage-grid">
             <label>
               Withdraw amount ({vault.token})
               <input value={withdrawShares} onChange={(event) => setWithdrawShares(event.target.value)} inputMode="decimal" />
             </label>
+            <button type="button" onClick={() => refreshBalances()}>Refresh balances</button>
+            <button type="button" onClick={withdrawVault} disabled={busy}>{busy ? 'Preparing...' : 'Withdraw'}</button>
+            <button type="button" onClick={claimSurplus} disabled={busy}>{busy ? 'Preparing...' : 'Claim surplus'}</button>
+            <button type="button" onClick={swapUsdt0ToFxrp} disabled={busy || !usdt0Balance}>{busy ? 'Preparing...' : 'Swap surplus to FXRP'}</button>
           </div>
-          <div className="actions">
-            <button type="button" onClick={withdrawVault} disabled={busy}>
-              {busy ? 'Working...' : `Withdraw from ${vault.name}`}
-            </button>
-            <button type="button" onClick={claimSurplus} disabled={busy}>
-              {busy ? 'Working...' : 'Claim USDT0 surplus'}
-            </button>
-            <button type="button" onClick={swapUsdt0ToFxrp} disabled={busy || !usdt0Balance}>
-              {busy ? 'Working...' : 'Swap USDT0 surplus -> FXRP'}
-            </button>
+
+          <div className="account-strip">
+            <div>
+              <span>USDT0 surplus</span>
+              <strong>{formatToken(usdt0Balance, 6, 'USDT0')}</strong>
+            </div>
+            <div>
+              <span>Operator</span>
+              <strong>{operatorAddress || '-'}</strong>
+            </div>
           </div>
-        </>
-      ) : (
-        <p className="status-line">
-          Withdrawals aren&apos;t wired up for this vault in the XRPL testing UI. Use the FXRP Carry Vault to test the withdraw path.
-        </p>
-      )}
 
-      <div className="stats-grid">
-        <div>
-          <span>PersonalAccount</span>
-          <strong>{shortAddress(personalAccount)}</strong>
-        </div>
-        <div>
-          <span>FXRP balance</span>
-          <strong>{formatToken(fxrpBalance, 6, 'FXRP')}</strong>
-        </div>
-        <div>
-          <span>{vault.token} shares</span>
-          <strong>{formatToken(shareBalance, vault.shareDecimals)}</strong>
-        </div>
-        <div>
-          <span>USDT0 surplus</span>
-          <strong>{formatToken(usdt0Balance, 6, 'USDT0')}</strong>
-        </div>
-        <div>
-          <span>Operator XRPL</span>
-          <strong>{operatorAddress || '-'}</strong>
-        </div>
-      </div>
-
-      {status ? <p className="status-line">{status}</p> : null}
-
-      {calls.length > 0 ? (
-        <div className="call-plan">
-          <h3>Generated Flare calls</h3>
-          {calls.map((call) => (
-            <div className="call-row" key={`${call.label}-${call.target}`}>
-              <span>{call.label}</span>
-              <code>{shortAddress(call.target)}</code>
-            </div>
-          ))}
-          {callHash ? (
-            <div className="call-row">
-              <span>Instruction call hash</span>
-              <code>{shortAddress(callHash)}</code>
+          {calls.length > 0 ? (
+            <div className="call-plan">
+              <h3>Generated calls</h3>
+              {calls.map((call) => (
+                <div className="call-row" key={`${call.label}-${call.target}`}>
+                  <span>{call.label}</span>
+                  <code>{shortAddress(call.target)}</code>
+                </div>
+              ))}
+              {callHash ? <div className="call-row"><span>Call hash</span><code>{shortAddress(callHash)}</code></div> : null}
+              {paymentReference ? <div className="call-row"><span>Memo reference</span><code>{shortAddress(paymentReference)}</code></div> : null}
             </div>
           ) : null}
-          {paymentReference ? (
-            <div className="call-row">
-              <span>Payment reference (memo)</span>
-              <code>{shortAddress(paymentReference)}</code>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
 
-      {xamanTemplate ? (
-        <div className="payload-box">
-          <h3>Xaman Payment template</h3>
-          <p>This is the XRPL Payment that gets signed. Instruction fee is a placeholder — confirm the real fee with the operator before mainnet use.</p>
-          <pre>{JSON.stringify(xamanTemplate, null, 2)}</pre>
+          {xamanTemplate ? <pre>{JSON.stringify(xamanTemplate, null, 2)}</pre> : null}
         </div>
-      ) : null}
-
-      {xamanPayload ? (
-        <div className="payload-box">
-          <h3>Sign with Xaman</h3>
-          {xamanPayload.qrPng ? <img src={xamanPayload.qrPng} alt="Xaman sign QR code" width={200} height={200} /> : null}
-          {xamanPayload.deeplink ? (
-            <a href={xamanPayload.deeplink} target="_blank" rel="noreferrer">
-              Open in Xaman
-            </a>
-          ) : null}
-          <p>
-            {xamanStatus?.signed
-              ? `Signed. XRPL tx: ${xamanStatus.txid ?? 'pending'}`
-              : xamanStatus?.cancelled
-                ? 'Cancelled in Xaman.'
-                : xamanStatus?.expired
-                  ? 'Expired.'
-                  : 'Waiting for signature...'}
-          </p>
-        </div>
-      ) : null}
+      </details>
     </section>
   );
 }

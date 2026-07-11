@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { Header } from '@/components/Header';
@@ -10,30 +10,41 @@ export default function Home() {
   const [selectedVault, setSelectedVault] = useState(VAULTS[0]);
 
   return (
-    <>
+    <div className="app-shell">
       <Header />
-      <main className="shell main-grid">
-        <section className="hero">
-          <p className="eyebrow">Xaman entry</p>
-          <h2>Deposit FXRP into the live carry vaults.</h2>
+      <main className="shell page-stack">
+        <section className="hero panel-strong">
+          <div>
+            <p className="eyebrow">No DeFi setup required</p>
+            <h2>Put FXRP to work from Xaman.</h2>
+          </div>
           <p>
-            Connect Xaman, pick a vault, enter an amount, and sign the generated XRPL payment. No separate Flare wallet step is required.
+            Choose one managed strategy, enter an FXRP amount, and sign in Xaman. The vault handles the lending, borrowing, LP routing, and rebalancing behind the scenes.
           </p>
         </section>
 
-        <section className="vault-list" aria-label="Vaults">
-          {VAULTS.map((vault) => (
-            <VaultCard
-              key={vault.id}
-              vault={vault}
-              selected={vault.id === selectedVault.id}
-              onSelect={setSelectedVault}
-            />
-          ))}
+        <section className="strategy-panel panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Step 1</p>
+              <h2>Pick an opportunity</h2>
+            </div>
+            <p>Estimated APR is a directional signal, not a guarantee.</p>
+          </div>
+          <div className="vault-list" aria-label="Vaults">
+            {VAULTS.map((vault) => (
+              <VaultCard
+                key={vault.id}
+                vault={vault}
+                selected={vault.id === selectedVault.id}
+                onSelect={setSelectedVault}
+              />
+            ))}
+          </div>
         </section>
 
         <SmartAccountPanel vault={selectedVault} />
       </main>
-    </>
+    </div>
   );
 }
