@@ -65,6 +65,20 @@ export const VAULTS: VaultConfig[] = [
     bestFor: 'Simple FXRP yield without choosing lending venues yourself.',
     exit: 'Withdraw back to FXRP',
   },
+  // TODO(live APR): this vault is not deployed/finished yet, so VaultCard and SmartAccountPanel
+  // fall back to the static `opportunityApr` string below (see useLiveOpportunity in
+  // VaultCard.tsx, gated on `status === 'live'`). Once it's live, flip status to 'live' and it
+  // will attempt to read useCarryVaultApr automatically â€” but check first whether that hook's
+  // math actually applies here:
+  //   - useCarryVaultApr assumes idle debt sits in lending venues (kToken/ERC4626) the way the
+  //     plain FXRP Carry Vault does. This LP vault instead deploys borrowed USDT0 + FXRP into an
+  //     Enosys LP position (see STFLR VAULT's `isCarryLpVault` branch in
+  //     ui/src/components/VaultSelector.tsx and its `leafValue`/`idleUsdt0`/`deployedUsdt0`
+  //     fields), so "Opportunity" here is LP trading fees *plus* the carry spread, not just the
+  //     venue supply rate.
+  //   - Needs a new on-chain read (leaf value, LP fee accrual) rather than reusing
+  //     useCarryVaultApr as-is; port the LP-specific accounting from STFLR VAULT's
+  //     useCarryVaultOnChain before trusting a live number here.
   {
     id: 'carry-lp-fxrp-usdt0',
     name: 'FXRP/USDT0 LP Carry Vault',
@@ -95,5 +109,11 @@ export const VAULTS: VaultConfig[] = [
 
 export const MASTER_ACCOUNT_CONTROLLER =
   (process.env.NEXT_PUBLIC_MASTER_ACCOUNT_CONTROLLER || '0x434936d47503353f06750Db1A444DBDC5F0AD37c') as Address;
+
+export const FLARE_CONTRACT_REGISTRY =
+  (process.env.NEXT_PUBLIC_FLARE_CONTRACT_REGISTRY || '0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019') as Address;
+
+export const ASSET_MANAGER_FXRP =
+  (process.env.NEXT_PUBLIC_ASSET_MANAGER_FXRP || '0x2a3Fe068cD92178554cabcf7c95ADf49B4B0B6A8') as Address;
 
 export const FLARE_EXPLORER = 'https://flare-explorer.flare.network';

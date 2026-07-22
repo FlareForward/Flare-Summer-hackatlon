@@ -34,6 +34,12 @@ const customCallComponents = [
   { name: 'data', type: 'bytes' },
 ] as const;
 
+const personalAccountCallComponents = [
+  { name: 'target', type: 'address' },
+  { name: 'value', type: 'uint256' },
+  { name: 'data', type: 'bytes' },
+] as const;
+
 export const masterAccountControllerAbi = [
   {
     type: 'function',
@@ -62,6 +68,54 @@ export const masterAccountControllerAbi = [
     stateMutability: 'view',
     inputs: [{ name: 'calls', type: 'tuple[]', components: customCallComponents }],
     outputs: [{ name: '', type: 'bytes32' }],
+  },
+  {
+    type: 'function',
+    name: 'getNonce',
+    stateMutability: 'view',
+    inputs: [{ name: 'personalAccount', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+export const personalAccountAbi = [
+  {
+    type: 'function',
+    name: 'executeUserOp',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'calls', type: 'tuple[]', components: personalAccountCallComponents }],
+    outputs: [],
+  },
+] as const;
+
+export const assetManagerAbi = [
+  {
+    type: 'function',
+    name: 'directMintingPaymentAddress',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    type: 'function',
+    name: 'getDirectMintingExecutorFeeUBA',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'getDirectMintingFeeBIPS',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'getDirectMintingMinimumFeeUBA',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
   },
 ] as const;
 
@@ -189,4 +243,111 @@ export const erc4626VaultAbi = [
     inputs: [{ name: 'account', type: 'address' }],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  {
+    type: 'function',
+    name: 'convertToAssets',
+    stateMutability: 'view',
+    inputs: [{ name: 'shares', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+// Read-only surface of the carry vault used to compute a live net APR: current debt/LTV plus
+// the Morpho market + lending-venue pointers needed to price the borrow/supply spread on chain.
+// Mirrors CARRY_ONCHAIN_ABI in the STFLR VAULT dashboard (same vault contract).
+export const carryVaultAprAbi = [
+  { type: 'function', name: 'debt', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'ltvBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'maxBorrowLtvBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint16' }] },
+  { type: 'function', name: 'collateralValue', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'collateralToken', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'irm', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'oracle', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'lltv', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'marketId', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] },
+  { type: 'function', name: 'venueCount', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'totalVenueAssets', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'venueAssets', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+  {
+    type: 'function',
+    name: 'getVenue',
+    stateMutability: 'view',
+    inputs: [{ type: 'uint256' }],
+    outputs: [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'kToken', type: 'address' },
+          { name: 'comptroller', type: 'address' },
+          { name: 'redeemable', type: 'bool' },
+          { name: 'enabled', type: 'bool' },
+          { name: 'maxAllocationBps', type: 'uint16' },
+          { name: 'kind', type: 'uint8' },
+        ],
+      },
+    ],
+  },
+] as const;
+
+// Morpho Blue market accessor â€” vault's collateral/debt market lives here.
+export const morphoMarketAbi = [
+  {
+    type: 'function',
+    name: 'market',
+    stateMutability: 'view',
+    inputs: [{ name: 'id', type: 'bytes32' }],
+    outputs: [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'totalSupplyAssets', type: 'uint128' },
+          { name: 'totalSupplyShares', type: 'uint128' },
+          { name: 'totalBorrowAssets', type: 'uint128' },
+          { name: 'totalBorrowShares', type: 'uint128' },
+          { name: 'lastUpdate', type: 'uint128' },
+          { name: 'fee', type: 'uint128' },
+        ],
+      },
+    ],
+  },
+] as const;
+
+// Morpho Blue interest-rate model â€” used to price the vault's current borrow rate.
+export const irmBorrowRateAbi = [
+  {
+    type: 'function',
+    name: 'borrowRateView',
+    stateMutability: 'view',
+    inputs: [
+      {
+        name: 'marketParams',
+        type: 'tuple',
+        components: [
+          { name: 'loanToken', type: 'address' },
+          { name: 'collateralToken', type: 'address' },
+          { name: 'oracle', type: 'address' },
+          { name: 'irm', type: 'address' },
+          { name: 'lltv', type: 'uint256' },
+        ],
+      },
+      {
+        name: 'market',
+        type: 'tuple',
+        components: [
+          { name: 'totalSupplyAssets', type: 'uint128' },
+          { name: 'totalSupplyShares', type: 'uint128' },
+          { name: 'totalBorrowAssets', type: 'uint128' },
+          { name: 'totalBorrowShares', type: 'uint128' },
+          { name: 'lastUpdate', type: 'uint128' },
+          { name: 'fee', type: 'uint128' },
+        ],
+      },
+    ],
+    outputs: [{ type: 'uint256' }],
+  },
+] as const;
+
+// kToken (Kinetic/Compound-style) lending venue â€” used to price the vault's supply rate.
+export const ktokenSupplyRateAbi = [
+  { type: 'function', name: 'supplyRatePerTimestamp', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
 ] as const;

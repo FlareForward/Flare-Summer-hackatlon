@@ -10,14 +10,16 @@ Move forward with the FXRP Carry Vault path while the FXRP/USDT0 LP Carry Vault 
 - Confirm FXRP, USDT0, and carry-vault share balance reads work for that PersonalAccount.
 - Confirm the operator XRPL address returned by `MasterAccountController.getXrplProviderWallets()` is the expected production/demo operator.
 - Confirm the real Smart Account instruction fee; replace the fixed 12-drop assumption before a public demo.
-- Record one carry-vault demo from Xaman signature through PersonalAccount share update.
+- Record one carry-vault demo from D'CENT signature through PersonalAccount share update if the provider is available; otherwise record the same flow with Xaman.
+- Verify whether the D'CENT Chrome extension injects `window.xrpl`; if not, use the D'CENT in-app browser for wallet-native testing.
 
-## Milestone 2 - Trustworthy Lifecycle
+## Milestone 2 - Direct Mint Entry
 
-- Track the exact signed XRPL txid and payment reference for each prepared instruction.
-- Separate states for signature success, operator pending, Flare execution success, timeout, cancellation, expiry, and failure.
-- Tie success to the expected vault effect rather than any balance change.
-- Add focused tests for custom instruction reference construction and Xaman payload construction.
+- Keep the invalid `encodeCustomInstruction` payment-reference path out of the main entry action; migrate advanced non-entry actions to memo UserOps before public use.
+- Validate the implemented inline `0xFF` direct-mint memo path with D'CENT/Xaman: XRP payment mints FXRP to the PersonalAccount and carries the vault deposit `PackedUserOperation`.
+- Confirm the encoded `PersonalAccount.executeUserOp` call data for `FXRP.approve(vault, amount)` and `vault.deposit(amount)` stays below XRPL memo limits on the target amount/vault.
+- Add `0xFE` hash-commitment support and recovery states for stuck direct-mint memos.
+- Test D'CENT first if `window.xrpl` is available; keep Xaman as fallback.
 
 ## Milestone 3 - LP Vault Activation
 

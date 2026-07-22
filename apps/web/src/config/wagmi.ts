@@ -1,6 +1,6 @@
 'use client';
 
-import { http, type Chain } from 'viem';
+import { createPublicClient, http, type Chain } from 'viem';
 
 const flareRpcUrl =
   process.env.NEXT_PUBLIC_FLARE_RPC_URL || 'https://flare-api.flare.network/ext/C/rpc';
@@ -24,3 +24,8 @@ export const flare: Chain = {
 };
 
 export const flareTransport = http(flareRpcUrl);
+
+export const flarePublicClient = createPublicClient({
+  chain: flare,
+  transport: flareTransport,
+});

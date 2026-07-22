@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #080d18;
   --card: #101827;
   --card-strong: #151f31;
@@ -262,6 +262,14 @@ pre {
   line-height: 1;
 }
 
+.apr-block em {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
 .vault-metrics,
 .account-strip {
   display: grid;
@@ -380,6 +388,13 @@ input {
 
 .flow-step input {
   width: 150px;
+}
+
+.wallet-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 button,

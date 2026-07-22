@@ -1,5 +1,5 @@
-import { encodeFunctionData, parseUnits, zeroAddress, type Address, type Hex } from 'viem';
-import { carryVaultAbi, erc20Abi, erc4626VaultAbi, swapRouterAbi } from '@/config/abis';
+import { encodeAbiParameters, encodeFunctionData, parseUnits, zeroAddress, type Address, type Hex } from 'viem';
+import { carryVaultAbi, erc20Abi, erc4626VaultAbi, personalAccountAbi, swapRouterAbi } from '@/config/abis';
 import { FXRP_ADDRESS, FXRP_USDT0_SWAP_ROUTER, USDT0_ADDRESS, type VaultConfig } from '@/config/vaults';
 
 export type FsaCall = {
@@ -25,6 +25,23 @@ export type XamanPaymentTemplate = {
     };
   }>;
 };
+
+const PACKED_USER_OPERATION_TUPLE = {
+  type: 'tuple',
+  components: [
+    { name: 'sender', type: 'address' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'initCode', type: 'bytes' },
+    { name: 'callData', type: 'bytes' },
+    { name: 'accountGasLimits', type: 'bytes32' },
+    { name: 'preVerificationGas', type: 'uint256' },
+    { name: 'gasFees', type: 'bytes32' },
+    { name: 'paymasterAndData', type: 'bytes' },
+    { name: 'signature', type: 'bytes' },
+  ],
+} as const;
+
+const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as const;
 
 export function buildDepositCalls(vault: VaultConfig, amount: string, personalAccount: Address): FsaCall[] {
   const assets = parseUnits(amount || '0', vault.assetDecimals);
@@ -162,6 +179,67 @@ export function toCustomCalls(calls: FsaCall[]): CustomCall[] {
     value: call.value,
     data: call.data,
   }));
+}
+
+export function encodePackedUserOperation(args: {
+  calls: FsaCall[];
+  sender: Address;
+  nonce: bigint;
+}): Hex {
+  const callData = encodeFunctionData({
+    abi: personalAccountAbi,
+    functionName: 'executeUserOp',
+    args: [args.calls],
+  });
+
+  return encodeAbiParameters(
+    [PACKED_USER_OPERATION_TUPLE],
+    [
+      {
+        sender: args.sender,
+        nonce: args.nonce,
+        initCode: '0x',
+        callData,
+        accountGasLimits: ZERO_BYTES32,
+        preVerificationGas: BigInt(0),
+        gasFees: ZERO_BYTES32,
+        paymasterAndData: '0x',
+        signature: '0x',
+      },
+    ],
+  );
+}
+
+export function buildMemoFieldUserOp(args: {
+  calls: FsaCall[];
+  sender: Address;
+  nonce: bigint;
+  walletId?: number;
+  executorFeeUBA?: bigint;
+}): Hex {
+  const walletId = args.walletId ?? 0;
+  if (!Number.isInteger(walletId) || walletId < 0 || walletId > 255) {
+    throw new Error('walletId must fit in one byte.');
+  }
+  const executorFeeUBA = args.executorFeeUBA ?? BigInt(0);
+  if (executorFeeUBA < BigInt(0) || executorFeeUBA > BigInt('0xffffffffffffffff')) {
+    throw new Error('executorFeeUBA must fit in uint64.');
+  }
+  const packedUserOperation = encodePackedUserOperation(args).slice(2);
+  const walletHex = walletId.toString(16).padStart(2, '0');
+  const feeHex = executorFeeUBA.toString(16).padStart(16, '0');
+  return `0xff${walletHex}${feeHex}${packedUserOperation}` as Hex;
+}
+
+export function computeDirectMintingPaymentDrops(args: {
+  netMintDrops: bigint;
+  feeBips: bigint;
+  minimumFeeDrops: bigint;
+  executorFeeDrops: bigint;
+}): bigint {
+  const proportionalFee = (args.netMintDrops * args.feeBips) / BigInt(10_000);
+  const mintingFee = proportionalFee > args.minimumFeeDrops ? proportionalFee : args.minimumFeeDrops;
+  return args.netMintDrops + mintingFee + args.executorFeeDrops;
 }
 
 /**

@@ -20,7 +20,7 @@ New for this repo:
 - XRPL address to Flare PersonalAccount lookup.
 - PersonalAccount balance reads for FXRP, USDT0, and vault shares.
 - Deposit, withdraw, claim-surplus, and surplus-swap call generation for supported carry-vault actions.
-- `0xff` custom instruction reference encoding through `MasterAccountController.encodeCustomInstruction`.
+- Smart Account state lookup and vault call-plan generation. Direct XRP entry requires the newer direct-mint/UserOp memo path rather than `encodeCustomInstruction`.
 - Server-side Xaman payload creation and polling.
 
 ## Deliberate Exclusions
@@ -46,7 +46,8 @@ New for this repo:
 
 ## Wallet Support
 
-- Xaman: primary user path. Xaman signs XRPL Payment payloads used by Flare Smart Accounts.
+- D'CENT: direct XRPL signing path when `window.xrpl` is available. This is expected in the in-app browser and may work in the browser extension if it injects the same provider.
+- Xaman: fallback and already-proven payload path. Xaman signs XRPL Payment payloads used by Flare Smart Accounts.
 - Bifrost, WalletConnect, Rabby, MetaMask: useful for direct Flare EVM debugging and demos, but not required by the target user flow.
 
 ## Product Readiness Boundary

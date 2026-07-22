@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPublicClient, http, isAddress, type Address, type Hex } from 'viem';
+import { createPublicClient, formatUnits, http, isAddress, parseUnits, type Address, type Hex } from 'viem';
 import { flare } from '@/config/wagmi';
-import { algebraPoolAbi, erc20Abi, masterAccountControllerAbi } from '@/config/abis';
+import { algebraPoolAbi, assetManagerAbi, erc20Abi, masterAccountControllerAbi } from '@/config/abis';
 import {
+  ASSET_MANAGER_FXRP,
   FXRP_ADDRESS,
   FXRP_USDT0_POOL,
   MASTER_ACCOUNT_CONTROLLER,
@@ -15,15 +16,19 @@ import {
   buildClaimSurplusCalls,
   buildCustomInstructionReference,
   buildDepositCalls,
+  buildMemoFieldUserOp,
   buildSwapUsdt0ToFxrpCalls,
   buildWithdrawCalls,
   buildXamanPaymentTemplate,
+  computeDirectMintingPaymentDrops,
   toCustomCalls,
   type FsaCall,
 } from '@/lib/fsa';
+import { signDcentInstructionPayment, useDcentXrplConnect } from '@/lib/dcent';
 import { createXamanPayload, getXamanPayloadStatus, type XamanPayload, type XamanPayloadStatus } from '@/lib/xaman';
 import { useXamanConnect } from '@/lib/xamanConnect';
 import { formatToken, isZeroAddress, shortAddress } from '@/lib/format';
+import { useCarryVaultApr } from '@/lib/useCarryVaultApr';
 
 type Props = {
   vault: VaultConfig;
@@ -31,6 +36,7 @@ type Props = {
 
 const EXECUTION_POLL_LIMIT = 60;
 const DEFAULT_FEE_DROPS = '12';
+const XRPL_MEMO_HEX_LIMIT = 2048;
 
 export function SmartAccountPanel({ vault }: Props) {
   const [xrplAddress, setXrplAddress] = useState('');
@@ -44,6 +50,8 @@ export function SmartAccountPanel({ vault }: Props) {
   const [calls, setCalls] = useState<FsaCall[]>([]);
   const [callHash, setCallHash] = useState<Hex | undefined>();
   const [paymentReference, setPaymentReference] = useState<Hex | undefined>();
+  const [directMintPaymentDrops, setDirectMintPaymentDrops] = useState<string | undefined>();
+  const [directMintDestination, setDirectMintDestination] = useState('');
   const [xamanPayload, setXamanPayload] = useState<XamanPayload | undefined>();
   const [xamanStatus, setXamanStatus] = useState<XamanPayloadStatus | undefined>();
   const [baseline, setBaseline] = useState<{ fxrp?: bigint; shares?: bigint; usdt0?: bigint } | undefined>();
@@ -52,6 +60,7 @@ export function SmartAccountPanel({ vault }: Props) {
   const [status, setStatus] = useState('');
   const executionAttempts = useRef(0);
   const { account: xamanAccount, connecting: xamanConnecting, error: xamanConnectError, connect: connectXaman, disconnect: disconnectXaman } = useXamanConnect();
+  const { account: dcentAccount, connecting: dcentConnecting, error: dcentError, connect: connectDcent, disconnect: disconnectDcent } = useDcentXrplConnect();
 
   const publicClient = useMemo(
     () =>
@@ -61,6 +70,10 @@ export function SmartAccountPanel({ vault }: Props) {
       }),
     [],
   );
+
+  // Same live-APR read as the vault cards; only the FXRP Carry Vault has this on chain today.
+  const liveApr = useCarryVaultApr(vault.address, vault.kind === 'carry' && vault.status === 'live' && !isZeroAddress(vault.address));
+  const estimatedAprDisplay = liveApr.netAprPct != null ? `${liveApr.netAprPct.toFixed(2)}%` : vault.opportunityApr;
 
   async function refreshBalances(account = personalAccount) {
     if (!account || !isAddress(account)) return;
@@ -93,7 +106,7 @@ export function SmartAccountPanel({ vault }: Props) {
     }
   }
 
-  async function createPayment(reference: Hex, operator: string) {
+  async function createXamanPayment(reference: Hex, operator: string) {
     setStatus('Creating Xaman request...');
     try {
       const payload = await createXamanPayload(operator, DEFAULT_FEE_DROPS, reference);
@@ -106,6 +119,69 @@ export function SmartAccountPanel({ vault }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function signWithDcent(reference: Hex, operator: string, account: string) {
+    setStatus('Confirm the XRPL Payment in D\'CENT to submit your vault instruction.');
+    try {
+      const result = await signDcentInstructionPayment({
+        account,
+        destination: operator,
+        amountDrops: DEFAULT_FEE_DROPS,
+        memoHex: reference,
+      });
+      setBaseline({ fxrp: fxrpBalance, shares: shareBalance, usdt0: usdt0Balance });
+      executionAttempts.current = 0;
+      setExecuting(true);
+      setStatus(`Signed in D'CENT${result.txid ? ` (${shortAddress(result.txid)})` : ''}. Waiting for execution on Flare...`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'D\'CENT signing failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createDirectMintXamanPayment(memo: Hex, destination: string, amountDrops: string) {
+    setStatus('Creating Xaman direct-mint request...');
+    try {
+      const payload = await createXamanPayload(destination, amountDrops, memo);
+      setXamanPayload(payload);
+      setXamanStatus(undefined);
+      setExecuting(false);
+      setStatus('Open Xaman and sign the direct-mint payment to mint FXRP and enter the vault.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to create Xaman direct-mint payment.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signDirectMintWithDcent(memo: Hex, destination: string, amountDrops: string, account: string) {
+    setStatus('Confirm the XRPL direct-mint Payment in D\'CENT.');
+    try {
+      const result = await signDcentInstructionPayment({
+        account,
+        destination,
+        amountDrops,
+        memoHex: memo,
+      });
+      setBaseline({ fxrp: fxrpBalance, shares: shareBalance, usdt0: usdt0Balance });
+      executionAttempts.current = 0;
+      setExecuting(true);
+      setStatus(`Signed direct mint in D'CENT${result.txid ? ` (${shortAddress(result.txid)})` : ''}. Waiting for the executor on Flare...`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'D\'CENT direct-mint signing failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitPreparedInstruction(reference: Hex, operator: string) {
+    if (dcentAccount) {
+      await signWithDcent(reference, operator, dcentAccount);
+      return;
+    }
+    await createXamanPayment(reference, operator);
   }
 
   async function prepareInstruction(
@@ -181,13 +257,124 @@ export function SmartAccountPanel({ vault }: Props) {
 
   async function enterVault() {
     setBusy(true);
-    const prepared = await prepareInstruction((account) => buildDepositCalls(vault, amount, account));
+    setXamanPayload(undefined);
+    setXamanStatus(undefined);
+    setCallHash(undefined);
+    setPaymentReference(undefined);
+    setDirectMintPaymentDrops(undefined);
+    setDirectMintDestination('');
+
+    const prepared = await prepareDirectMintEntry();
     if (!prepared) {
       setBusy(false);
       return;
     }
-    const { operator, reference } = prepared;
-    await createPayment(reference, operator);
+
+    const { memo, coreVaultXrplAddress, paymentDrops } = prepared;
+    if (dcentAccount) {
+      await signDirectMintWithDcent(memo, coreVaultXrplAddress, paymentDrops, dcentAccount);
+      return;
+    }
+    await createDirectMintXamanPayment(memo, coreVaultXrplAddress, paymentDrops);
+  }
+
+  async function prepareDirectMintEntry(): Promise<{ memo: Hex; coreVaultXrplAddress: string; paymentDrops: string } | null> {
+    if (!vault.entryEnabled) {
+      setStatus(vault.readinessNote || 'This vault is not accepting Smart Account instructions yet.');
+      return null;
+    }
+    if (!xrplAddress) {
+      setStatus('Connect D\'CENT or Xaman first.');
+      return null;
+    }
+
+    let netMintDrops: bigint;
+    try {
+      netMintDrops = parseUnits(amount || '0', vault.assetDecimals);
+    } catch {
+      setStatus('Enter a valid XRP amount.');
+      return null;
+    }
+    if (netMintDrops <= BigInt(0)) {
+      setStatus('Enter an XRP amount greater than zero.');
+      return null;
+    }
+
+    setStatus('Resolving Smart Account, nonce, and direct-mint fees...');
+    try {
+      const account =
+        personalAccount && isAddress(personalAccount)
+          ? personalAccount
+          : await publicClient.readContract({
+              address: MASTER_ACCOUNT_CONTROLLER,
+              abi: masterAccountControllerAbi,
+              functionName: 'getPersonalAccount',
+              args: [xrplAddress],
+            });
+      setPersonalAccount(account);
+      await refreshBalances(account);
+
+      const [nonce, coreVaultXrplAddress, executorFeeDrops, feeBips, minimumFeeDrops] = await Promise.all([
+        publicClient.readContract({
+          address: MASTER_ACCOUNT_CONTROLLER,
+          abi: masterAccountControllerAbi,
+          functionName: 'getNonce',
+          args: [account],
+        }),
+        publicClient.readContract({
+          address: ASSET_MANAGER_FXRP,
+          abi: assetManagerAbi,
+          functionName: 'directMintingPaymentAddress',
+          args: [],
+        }),
+        publicClient.readContract({
+          address: ASSET_MANAGER_FXRP,
+          abi: assetManagerAbi,
+          functionName: 'getDirectMintingExecutorFeeUBA',
+          args: [],
+        }),
+        publicClient.readContract({
+          address: ASSET_MANAGER_FXRP,
+          abi: assetManagerAbi,
+          functionName: 'getDirectMintingFeeBIPS',
+          args: [],
+        }),
+        publicClient.readContract({
+          address: ASSET_MANAGER_FXRP,
+          abi: assetManagerAbi,
+          functionName: 'getDirectMintingMinimumFeeUBA',
+          args: [],
+        }),
+      ]);
+
+      const nextCalls = buildDepositCalls(vault, amount, account);
+      const memo = buildMemoFieldUserOp({
+        calls: nextCalls,
+        sender: account,
+        nonce,
+      });
+      const memoHexLength = memo.length - 2;
+      setCalls(nextCalls);
+      setPaymentReference(memo);
+      if (memoHexLength > XRPL_MEMO_HEX_LIMIT) {
+        setStatus(`The inline UserOp memo is ${memoHexLength / 2} bytes, over XRPL's 1024-byte memo limit. Use the 0xFE hash-commitment executor path for this call batch.`);
+        return null;
+      }
+
+      const paymentDrops = computeDirectMintingPaymentDrops({
+        netMintDrops,
+        feeBips,
+        minimumFeeDrops,
+        executorFeeDrops,
+      }).toString();
+
+      setDirectMintPaymentDrops(paymentDrops);
+      setDirectMintDestination(coreVaultXrplAddress);
+      return { memo, coreVaultXrplAddress, paymentDrops };
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to prepare direct-mint UserOp.');
+      return null;
+    }
   }
 
   async function withdrawVault() {
@@ -198,7 +385,7 @@ export function SmartAccountPanel({ vault }: Props) {
       return;
     }
     const { operator, reference } = prepared;
-    await createPayment(reference, operator);
+    await submitPreparedInstruction(reference, operator);
   }
 
   async function claimSurplus() {
@@ -209,7 +396,7 @@ export function SmartAccountPanel({ vault }: Props) {
       return;
     }
     const { operator, reference } = prepared;
-    await createPayment(reference, operator);
+    await submitPreparedInstruction(reference, operator);
   }
 
   async function swapUsdt0ToFxrp() {
@@ -241,37 +428,45 @@ export function SmartAccountPanel({ vault }: Props) {
       return;
     }
     const { operator, reference } = prepared;
-    await createPayment(reference, operator);
+    await submitPreparedInstruction(reference, operator);
+  }
+
+  async function resolveConnectedAccount(accountAddress: string, walletName: string) {
+    setXrplAddress(accountAddress);
+    setStatus(`${walletName} connected. Finding your Smart Account...`);
+    try {
+      const account = await publicClient.readContract({
+        address: MASTER_ACCOUNT_CONTROLLER,
+        abi: masterAccountControllerAbi,
+        functionName: 'getPersonalAccount',
+        args: [accountAddress],
+      });
+      const operators = await publicClient.readContract({
+        address: MASTER_ACCOUNT_CONTROLLER,
+        abi: masterAccountControllerAbi,
+        functionName: 'getXrplProviderWallets',
+        args: [],
+      });
+      setPersonalAccount(account);
+      setOperatorAddress(operators[0] || '');
+      setStatus(`Ready. Enter an amount and sign with ${walletName}.`);
+      await refreshBalances(account);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to resolve smart account.');
+    }
   }
 
   useEffect(() => {
     if (!xamanAccount) return;
-    setXrplAddress(xamanAccount);
-    setStatus('Xaman connected. Finding your Smart Account...');
-    (async () => {
-      try {
-        const account = await publicClient.readContract({
-          address: MASTER_ACCOUNT_CONTROLLER,
-          abi: masterAccountControllerAbi,
-          functionName: 'getPersonalAccount',
-          args: [xamanAccount],
-        });
-        const operators = await publicClient.readContract({
-          address: MASTER_ACCOUNT_CONTROLLER,
-          abi: masterAccountControllerAbi,
-          functionName: 'getXrplProviderWallets',
-          args: [],
-        });
-        setPersonalAccount(account);
-        setOperatorAddress(operators[0] || '');
-        setStatus('Ready. Enter an amount and sign with Xaman.');
-        await refreshBalances(account);
-      } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Unable to resolve smart account.');
-      }
-    })();
+    resolveConnectedAccount(xamanAccount, 'Xaman');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [xamanAccount]);
+
+  useEffect(() => {
+    if (!dcentAccount) return;
+    resolveConnectedAccount(dcentAccount, "D'CENT");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dcentAccount]);
 
   useEffect(() => {
     if (!xamanPayload || xamanStatus?.resolved) return undefined;
@@ -333,7 +528,7 @@ export function SmartAccountPanel({ vault }: Props) {
       <div className="section-heading">
         <div>
           <p className="eyebrow">Step 2</p>
-          <h2>Enter with Xaman</h2>
+          <h2>Enter with XRPL wallet</h2>
         </div>
         <span className="selected-chip" style={{ borderColor: vault.accent, color: vault.accent }}>
           {vault.name}
@@ -343,24 +538,31 @@ export function SmartAccountPanel({ vault }: Props) {
       <div className="selected-summary">
         <div>
           <span>Estimated APR</span>
-          <strong>{vault.opportunityApr}</strong>
+          <strong>{estimatedAprDisplay}</strong>
         </div>
         <p>{vault.bestFor}</p>
       </div>
 
       <div className="step-list">
-        <div className={xamanAccount ? 'flow-step done' : 'flow-step'}>
+        <div className={xamanAccount || dcentAccount ? 'flow-step done' : 'flow-step'}>
           <span>1</span>
           <div>
-            <strong>Connect Xaman</strong>
-            <p>{xamanAccount ? shortAddress(xamanAccount) : 'Use your XRPL wallet. No FLR wallet needed.'}</p>
+            <strong>Connect wallet</strong>
+            <p>{dcentAccount ? `D'CENT ${shortAddress(dcentAccount)}` : xamanAccount ? `Xaman ${shortAddress(xamanAccount)}` : 'Use your XRPL wallet. No FLR wallet needed.'}</p>
           </div>
-          {xamanAccount ? (
+          {dcentAccount ? (
+            <button type="button" className="ghost-button" onClick={disconnectDcent}>Disconnect</button>
+          ) : xamanAccount ? (
             <button type="button" className="ghost-button" onClick={disconnectXaman}>Disconnect</button>
           ) : (
-            <button type="button" onClick={connectXaman} disabled={xamanConnecting}>
-              {xamanConnecting ? 'Waiting...' : 'Connect'}
-            </button>
+            <div className="wallet-actions">
+              <button type="button" onClick={connectDcent} disabled={dcentConnecting || xamanConnecting}>
+                {dcentConnecting ? 'Waiting...' : "D'CENT"}
+              </button>
+              <button type="button" className="ghost-button" onClick={connectXaman} disabled={xamanConnecting || dcentConnecting}>
+                {xamanConnecting ? 'Waiting...' : 'Xaman'}
+              </button>
+            </div>
           )}
         </div>
 
@@ -368,7 +570,7 @@ export function SmartAccountPanel({ vault }: Props) {
           <span>2</span>
           <div>
             <strong>Choose amount</strong>
-            <p>Deposit FXRP into the selected managed vault.</p>
+            <p>XRP entry requires direct minting into the Smart Account, then vault execution.</p>
           </div>
           <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" aria-label="Deposit amount" />
         </div>
@@ -377,15 +579,15 @@ export function SmartAccountPanel({ vault }: Props) {
           <span>3</span>
           <div>
             <strong>Sign once</strong>
-            <p>Xaman signs the payment memo that tells the operator what to execute.</p>
+            <p>Pay XRP to the FXRP Core Vault with a Smart Account UserOp memo.</p>
           </div>
           <button type="button" onClick={enterVault} disabled={busy || !vault.entryEnabled}>
-            {busy ? 'Preparing...' : vault.entryEnabled ? 'Enter vault' : 'Waiting for vault'}
+            {busy ? 'Preparing...' : vault.entryEnabled ? 'Mint and enter' : 'Waiting for vault'}
           </button>
         </div>
       </div>
 
-      {!xamanAccount ? (
+      {!xamanAccount && !dcentAccount ? (
         <label className="manual-address">
           Paste XRPL address instead
           <input
@@ -396,6 +598,7 @@ export function SmartAccountPanel({ vault }: Props) {
         </label>
       ) : null}
 
+      {dcentError ? <p className="status-line warning">{dcentError}</p> : null}
       {xamanConnectError ? <p className="status-line warning">{xamanConnectError}</p> : null}
       {status ? <p className="status-line">{status}</p> : null}
 
@@ -459,6 +662,14 @@ export function SmartAccountPanel({ vault }: Props) {
             <div>
               <span>Operator</span>
               <strong>{operatorAddress || '-'}</strong>
+            </div>
+            <div>
+              <span>Core Vault</span>
+              <strong>{directMintDestination || '-'}</strong>
+            </div>
+            <div>
+              <span>XRP payment</span>
+              <strong>{directMintPaymentDrops ? `${formatUnits(BigInt(directMintPaymentDrops), 6)} XRP` : '-'}</strong>
             </div>
           </div>
 

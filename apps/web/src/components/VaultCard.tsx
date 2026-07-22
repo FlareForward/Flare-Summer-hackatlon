@@ -3,6 +3,7 @@
 import type { VaultConfig } from '@/config/vaults';
 import { FLARE_EXPLORER } from '@/config/vaults';
 import { isZeroAddress, shortAddress } from '@/lib/format';
+import { useCarryVaultApr } from '@/lib/useCarryVaultApr';
 
 type Props = {
   vault: VaultConfig;
@@ -10,7 +11,25 @@ type Props = {
   onSelect: (vault: VaultConfig) => void;
 };
 
+// Only the FXRP Carry Vault is live on chain today; the LP carry vault (status: 'candidate')
+// falls back to its static estimate until it's deployed. See the TODO on that vault entry in
+// config/vaults.ts for what live wiring it needs once ready.
+function useLiveOpportunity(vault: VaultConfig) {
+  const canReadLive = vault.kind === 'carry' && vault.status === 'live' && !isZeroAddress(vault.address);
+  const live = useCarryVaultApr(vault.address, canReadLive);
+  if (live.netAprPct == null) {
+    return { display: vault.opportunityApr, sub: null as string | null, isLive: false };
+  }
+  return {
+    display: `${live.netAprPct.toFixed(2)}%`,
+    sub: live.spreadPct != null ? `Live · spread ${live.spreadPct.toFixed(2)}%` : 'Live',
+    isLive: true,
+  };
+}
+
 export function VaultCard({ vault, selected, onSelect }: Props) {
+  const opportunity = useLiveOpportunity(vault);
+
   return (
     <button
       className={`vault-card ${selected ? 'selected' : ''}`}
@@ -29,7 +48,8 @@ export function VaultCard({ vault, selected, onSelect }: Props) {
         </div>
         <div className="apr-block">
           <span>Opportunity</span>
-          <strong>{vault.opportunityApr}</strong>
+          <strong>{opportunity.display}</strong>
+          {opportunity.sub ? <em>{opportunity.sub}</em> : null}
         </div>
       </div>
 

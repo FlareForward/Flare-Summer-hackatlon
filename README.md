@@ -25,7 +25,7 @@ Current readiness:
 2. Connect a Xaman account with client-side OAuth2 PKCE sign-in or paste an XRPL address manually, then resolve it to its Flare Smart Account (`PersonalAccount`).
 3. Read FXRP, USDT0, and vault share balances from that PersonalAccount.
 4. Build approve, deposit, withdraw, claim-surplus, and surplus-swap call plans for supported vault actions.
-5. Encode call plans into real `0xff` custom instruction references via `MasterAccountController.encodeCustomInstruction`.
+5. Resolve Smart Account state, read the current memo nonce, encode an inline `0xFF` direct-mint `PackedUserOperation`, and ask the XRPL wallet to pay the FXRP Core Vault with that memo so minted FXRP is deposited by the PersonalAccount.
 6. Create real Xaman sign requests for the resulting XRPL payments through server-side API routes so Xaman credentials never reach the browser.
 7. Poll the Xaman payload for signature, then poll on-chain balances to detect when the operator has relayed the FDC proof and executed the instruction on Flare.
 
@@ -40,9 +40,15 @@ The existing keeper remains in the original vault repository. This app never tal
 
 This is separate from the sign-request flow: connecting resolves who the user is, while `createXamanPayload` and `/api/xaman/payload` later ask them to sign the specific vault instruction payment. That sign request still requires the server-side `XUMM_API_KEY` and `XUMM_API_SECRET` pair.
 
-### Instruction Fee
+### Connecting D'CENT
 
-The XRPL payment amount sent to the operator is currently fixed at 12 drops in the UI. Confirm the real fee with the operator before using this on mainnet or for a public user demo.
+D'CENT support uses the wallet's XRPL provider when it is injected as `window.xrpl`. The same code path should work in D'CENT's in-app browser. If the Chrome extension exposes the same provider, it can be used for a desktop demo; if it does not inject `window.xrpl`, the app will show a provider-not-found message and Xaman remains the fallback.
+
+The D'CENT path signs and submits the XRPL Payment directly through `xrpl_signTransaction`. For vault entry, the payment goes to the FXRP Core Vault and carries the Smart Accounts direct-mint UserOp memo.
+
+### Direct Mint Fees
+
+Vault entry reads `directMintingPaymentAddress()`, `getDirectMintingExecutorFeeUBA()`, `getDirectMintingFeeBIPS()`, and `getDirectMintingMinimumFeeUBA()` from `AssetManagerFXRP`, then adds the required fees to the requested net FXRP mint amount. Advanced non-entry actions still use the older operator payment-reference prototype and should be migrated before public use.
 
 ## Run
 
@@ -56,6 +62,8 @@ Environment variables (`apps/web/.env.local`):
 
 - `NEXT_PUBLIC_FLARE_RPC_URL` - override the default public Flare RPC.
 - `NEXT_PUBLIC_MASTER_ACCOUNT_CONTROLLER` - override the default MasterAccountController address.
+- `NEXT_PUBLIC_ASSET_MANAGER_FXRP` - override the default FXRP AssetManager used for direct-mint fee and Core Vault reads.
+- `NEXT_PUBLIC_FLARE_CONTRACT_REGISTRY` - override the default FlareContractRegistry address if needed by future registry reads.
 - `NEXT_PUBLIC_CARRY_FXRP_VAULT` - override the FXRP Carry Vault address.
 - `NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT` - override the candidate FXRP/USDT0 LP Carry Vault address.
 - `XUMM_API_KEY` / `XUMM_API_SECRET` - server-only Xaman Developer Console credentials, used by the `/api/xaman/payload` routes.
