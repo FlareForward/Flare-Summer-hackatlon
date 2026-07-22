@@ -351,3 +351,10 @@ export const irmBorrowRateAbi = [
 export const ktokenSupplyRateAbi = [
   { type: 'function', name: 'supplyRatePerTimestamp', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
 ] as const;
+
+// kToken position accessors, used to size how much the vault has deployed into a given venue
+// (shares * exchangeRateStored / 1e18), for vaults whose venueAssets() helper isn't deployed.
+export const ktokenPositionAbi = [
+  { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'exchangeRateStored', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+] as const;

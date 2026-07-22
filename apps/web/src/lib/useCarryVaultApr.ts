@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Address } from 'viem';
+import { encodeAbiParameters, keccak256, type Address } from 'viem';
 import { flarePublicClient } from '@/config/wagmi';
 import {
   carryVaultAprAbi,
   erc4626VaultAbi,
   irmBorrowRateAbi,
+  ktokenPositionAbi,
   ktokenSupplyRateAbi,
   morphoMarketAbi,
 } from '@/config/abis';
@@ -25,6 +26,37 @@ const MAX_VENUES = 5;
 const ZERO = BigInt(0);
 const ONE = BigInt(1);
 const BPS_DENOMINATOR = BigInt(10_000);
+const EXCHANGE_RATE_SCALE = BigInt(10) ** BigInt(18);
+
+// This vault's `_venues` array lives at storage slot 23. Its `getVenue`/`venueAssets` view
+// helpers revert on the deployment behind this hackathon's FXRP Carry Vault (confirmed against
+// the live contract), so — same as STFLR VAULT's dashboard does for pre-helper deployments —
+// fall back to decoding the packed struct straight out of storage when the helper calls fail.
+const CARRY_VENUES_STORAGE_SLOT = BigInt(23);
+
+function storageSlot(slot: bigint): `0x${string}` {
+  return `0x${slot.toString(16).padStart(64, '0')}` as `0x${string}`;
+}
+
+function wordToAddress(word: `0x${string}` | undefined): Address {
+  return `0x${(word || '0x0').slice(-40)}` as Address;
+}
+
+function carryVenueBaseSlot(): bigint {
+  const encoded = encodeAbiParameters([{ type: 'uint256' }], [CARRY_VENUES_STORAGE_SLOT]);
+  return BigInt(keccak256(encoded));
+}
+
+// Struct layout: { kToken: address, comptroller: address, redeemable: bool, enabled: bool,
+// maxAllocationBps: uint16, kind: uint8 } packed across two 32-byte slots.
+function decodeCarryVenueStorage(slot0: `0x${string}` | undefined, slot1: `0x${string}` | undefined) {
+  const packed = BigInt(slot1 || '0x0');
+  return {
+    target: wordToAddress(slot0),
+    enabled: ((packed >> BigInt(168)) & BigInt(0xff)) !== ZERO,
+    kind: Number((packed >> BigInt(192)) & BigInt(0xff)),
+  };
+}
 
 export type CarryVaultApr = {
   // Net APR on posted collateral, accounting for LTV dilution — this is the number to show as "Opportunity".
@@ -114,12 +146,26 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
         let bestSupplyAprPct: number | null = null;
         let pastBlockNumber: bigint | null = null;
 
+        const venueBaseSlot = carryVenueBaseSlot();
+
         for (let i = ZERO; i < venueCount && i < BigInt(MAX_VENUES); i += ONE) {
-          const venue = await rc<{ kToken: Address; enabled: boolean; kind: number }>('getVenue', [i]).catch(() => null);
-          if (!venue || !venue.kToken || !venue.enabled) continue;
-          const assets = await rc<bigint>('venueAssets', [i]).catch(() => ZERO);
+          const viaHelper = await rc<{ kToken: Address; enabled: boolean; kind: number }>('getVenue', [i]).catch(() => null);
+          let venue: { target: Address; enabled: boolean; kind: number };
+          if (viaHelper) {
+            venue = { target: viaHelper.kToken, enabled: viaHelper.enabled, kind: viaHelper.kind };
+          } else {
+            const slotIndex = venueBaseSlot + i * BigInt(2);
+            const [slot0, slot1] = await Promise.all([
+              flarePublicClient.getStorageAt({ address: vaultAddress, slot: storageSlot(slotIndex) }),
+              flarePublicClient.getStorageAt({ address: vaultAddress, slot: storageSlot(slotIndex + ONE) }),
+            ]);
+            venue = decodeCarryVenueStorage(slot0, slot1);
+          }
+          if (!venue.target || venue.target === '0x0000000000000000000000000000000000000000' || !venue.enabled) continue;
 
           let aprPct: number | null = null;
+          let assets = await rc<bigint>('venueAssets', [i]).catch(() => null);
+
           if (venue.kind === 1) {
             // ERC4626 venue: infer APR from the 7-day change in its share price.
             if (pastBlockNumber === null) {
@@ -127,16 +173,32 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
               const sevenDaysOfBlocks = FLARE_BLOCKS_PER_DAY * BigInt(7);
               pastBlockNumber = blockNumber > sevenDaysOfBlocks ? blockNumber - sevenDaysOfBlocks : ONE;
             }
+            if (assets === null) {
+              const shares = await flarePublicClient.readContract({
+                address: venue.target,
+                abi: erc4626VaultAbi,
+                functionName: 'balanceOf',
+                args: [vaultAddress],
+              }).catch(() => ZERO);
+              assets = shares > ZERO
+                ? await flarePublicClient.readContract({
+                  address: venue.target,
+                  abi: erc4626VaultAbi,
+                  functionName: 'convertToAssets',
+                  args: [shares],
+                }).catch(() => ZERO)
+                : ZERO;
+            }
             try {
               const [priceNow, pricePast] = await Promise.all([
                 flarePublicClient.readContract({
-                  address: venue.kToken,
+                  address: venue.target,
                   abi: erc4626VaultAbi,
                   functionName: 'convertToAssets',
                   args: [ERC4626_LOOKBACK_UNIT],
                 }),
                 flarePublicClient.readContract({
-                  address: venue.kToken,
+                  address: venue.target,
                   abi: erc4626VaultAbi,
                   functionName: 'convertToAssets',
                   args: [ERC4626_LOOKBACK_UNIT],
@@ -150,14 +212,31 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
               // venue price history unavailable; skip it
             }
           } else {
+            if (assets === null) {
+              const [shares, exchangeRate] = await Promise.all([
+                flarePublicClient.readContract({
+                  address: venue.target,
+                  abi: ktokenPositionAbi,
+                  functionName: 'balanceOf',
+                  args: [vaultAddress],
+                }).catch(() => ZERO),
+                flarePublicClient.readContract({
+                  address: venue.target,
+                  abi: ktokenPositionAbi,
+                  functionName: 'exchangeRateStored',
+                }).catch(() => ZERO),
+              ]);
+              assets = (shares * exchangeRate) / EXCHANGE_RATE_SCALE;
+            }
             const rate = await flarePublicClient.readContract({
-              address: venue.kToken,
+              address: venue.target,
               abi: ktokenSupplyRateAbi,
               functionName: 'supplyRatePerTimestamp',
             }).catch(() => null);
             if (rate !== null) aprPct = perSecondRateToAprPct(rate);
           }
 
+          assets = assets ?? ZERO;
           if (aprPct === null) continue;
           bestSupplyAprPct = bestSupplyAprPct === null ? aprPct : Math.max(bestSupplyAprPct, aprPct);
           if (assets > ZERO) {
