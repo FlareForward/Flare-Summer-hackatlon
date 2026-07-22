@@ -1,4 +1,4 @@
-﻿import type { Address } from 'viem';
+import type { Address } from 'viem';
 
 export type VaultKind = 'carry' | 'lp';
 export type VaultDepositMode = 'erc20-vault' | 'erc4626';
@@ -17,6 +17,8 @@ export type VaultConfig = {
   accent: string;
   range?: string;
   status: 'live' | 'candidate';
+  entryEnabled: boolean;
+  readinessNote?: string;
   supportsCarryWithdrawals?: boolean;
   summary: string;
   opportunityApr: string;
@@ -51,6 +53,8 @@ export const VAULTS: VaultConfig[] = [
     address: (process.env.NEXT_PUBLIC_CARRY_FXRP_VAULT || '0x8005380999F6024CBbAe0c82d616F6a801F437fB') as Address,
     accent: '#F4BC62',
     status: 'live',
+    entryEnabled: true,
+    readinessNote: 'Ready for the Xaman Smart Account entry flow once operator fee and vault runtime state are confirmed.',
     supportsCarryWithdrawals: true,
     summary: 'A managed carry trade: your FXRP stays the entry asset while the vault borrows USDT0 and seeks yield automatically.',
     opportunityApr: 'Est. 8-14%',
@@ -74,7 +78,9 @@ export const VAULTS: VaultConfig[] = [
     address: (process.env.NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT || '0x57efbbc0a8d33f9c859d0213de38d3a311658c97') as Address,
     accent: '#3FB7A4',
     range: '10%',
-    status: 'live',
+    status: 'candidate',
+    entryEnabled: false,
+    readinessNote: 'Blocked until FXRP/USDT0 LP vault testing is complete.',
     supportsCarryWithdrawals: true,
     summary: 'A higher-touch strategy: the vault borrows USDT0, pairs it with FXRP exposure, and manages LP deployment for you.',
     opportunityApr: 'Est. 12-22%',

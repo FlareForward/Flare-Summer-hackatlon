@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPublicClient, http, isAddress, type Address, type Hex } from 'viem';
@@ -111,6 +111,10 @@ export function SmartAccountPanel({ vault }: Props) {
   async function prepareInstruction(
     buildCalls: (account: Address) => FsaCall[],
   ): Promise<{ account: Address; operator: string; calls: FsaCall[]; reference: Hex } | null> {
+    if (!vault.entryEnabled) {
+      setStatus(vault.readinessNote || 'This vault is not accepting Smart Account instructions yet.');
+      return null;
+    }
     if (!xrplAddress) {
       setStatus('Connect Xaman or paste your XRPL address first.');
       return null;
@@ -375,8 +379,8 @@ export function SmartAccountPanel({ vault }: Props) {
             <strong>Sign once</strong>
             <p>Xaman signs the payment memo that tells the operator what to execute.</p>
           </div>
-          <button type="button" onClick={enterVault} disabled={busy}>
-            {busy ? 'Preparing...' : 'Enter vault'}
+          <button type="button" onClick={enterVault} disabled={busy || !vault.entryEnabled}>
+            {busy ? 'Preparing...' : vault.entryEnabled ? 'Enter vault' : 'Waiting for vault'}
           </button>
         </div>
       </div>
@@ -442,9 +446,9 @@ export function SmartAccountPanel({ vault }: Props) {
               <input value={withdrawShares} onChange={(event) => setWithdrawShares(event.target.value)} inputMode="decimal" />
             </label>
             <button type="button" onClick={() => refreshBalances()}>Refresh balances</button>
-            <button type="button" onClick={withdrawVault} disabled={busy}>{busy ? 'Preparing...' : 'Withdraw'}</button>
-            <button type="button" onClick={claimSurplus} disabled={busy}>{busy ? 'Preparing...' : 'Claim surplus'}</button>
-            <button type="button" onClick={swapUsdt0ToFxrp} disabled={busy || !usdt0Balance}>{busy ? 'Preparing...' : 'Swap surplus to FXRP'}</button>
+            <button type="button" onClick={withdrawVault} disabled={busy || !vault.entryEnabled}>{busy ? 'Preparing...' : 'Withdraw'}</button>
+            <button type="button" onClick={claimSurplus} disabled={busy || !vault.entryEnabled}>{busy ? 'Preparing...' : 'Claim surplus'}</button>
+            <button type="button" onClick={swapUsdt0ToFxrp} disabled={busy || !vault.entryEnabled || !usdt0Balance}>{busy ? 'Preparing...' : 'Swap surplus to FXRP'}</button>
           </div>
 
           <div className="account-strip">

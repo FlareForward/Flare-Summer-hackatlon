@@ -10,30 +10,39 @@ This repo intentionally includes only the public hackathon surface:
 
 It intentionally excludes keeper code, backend runtime services, and private strategy vaults.
 
+## Product State
+
+The product is an XRPL-to-Flare vault gateway. The first production-ready lane is the FXRP Carry Vault. The FXRP/USDT0 LP Carry Vault remains visible as a candidate opportunity, but Smart Account entry is disabled until LP vault testing is complete.
+
+Current readiness:
+
+- `FXRP Carry Vault`: active entry target, pending final operator-fee and runtime-state confirmation.
+- `FXRP/USDT0 LP Carry Vault`: candidate only, blocked until LP vault testing is complete.
+
 ## Current Scope
 
-1. Show only the live FXRP Carry Vault and FXRP/USDT0 LP Carry Vault opportunities.
-2. Connect a Xaman account (client-side OAuth2 PKCE sign-in) or paste an XRPL address manually, then resolve it to its Flare Smart Account (`PersonalAccount`).
-3. Read FXRP and vault share balances from that PersonalAccount.
-4. Build the approve + deposit call plan for the selected vault.
-5. Encode that call plan into a real `0xff` custom instruction reference via `MasterAccountController.encodeCustomInstruction`.
-6. Create a real Xaman (XUMM) sign request for the resulting XRPL payment, via a server-side API route so the app's Xaman credentials never reach the browser.
-7. Poll the Xaman payload for signature, then poll the vault's on-chain share balance to detect when the operator has relayed the FDC proof and executed the instruction on Flare.
+1. Show the FXRP Carry Vault as the active Smart Account entry path and the FXRP/USDT0 LP Carry Vault as a candidate opportunity.
+2. Connect a Xaman account with client-side OAuth2 PKCE sign-in or paste an XRPL address manually, then resolve it to its Flare Smart Account (`PersonalAccount`).
+3. Read FXRP, USDT0, and vault share balances from that PersonalAccount.
+4. Build approve, deposit, withdraw, claim-surplus, and surplus-swap call plans for supported vault actions.
+5. Encode call plans into real `0xff` custom instruction references via `MasterAccountController.encodeCustomInstruction`.
+6. Create real Xaman sign requests for the resulting XRPL payments through server-side API routes so Xaman credentials never reach the browser.
+7. Poll the Xaman payload for signature, then poll on-chain balances to detect when the operator has relayed the FDC proof and executed the instruction on Flare.
 
-The existing keeper remains in the original vault repository. This app never talks to the keeper directly - the FSA operator service (external, run by Flare) is what turns a signed XRPL payment into a Flare transaction. The visible UI uses Xaman only and no longer asks the user to connect a Flare wallet.
+The existing keeper remains in the original vault repository. This app never talks to the keeper directly. The FSA operator service is what turns a signed XRPL payment into a Flare transaction. The visible UI uses Xaman only and does not ask the user to connect a Flare wallet.
 
 ### Connecting Xaman
 
-"Connect Xaman" uses `xumm-oauth2-pkce`, a client-side-only sign-in flow. It needs the app's **API Key only** (not the secret) exposed to the browser as `NEXT_PUBLIC_XUMM_API_KEY`. Two things must be true for it to work:
+"Connect Xaman" uses `xumm-oauth2-pkce`, a client-side-only sign-in flow. It needs the app's API Key only, exposed to the browser as `NEXT_PUBLIC_XUMM_API_KEY`. Two things must be true for it to work:
 
-1. `NEXT_PUBLIC_XUMM_API_KEY` is set (same value as `XUMM_API_KEY`, just under the public prefix so Next.js inlines it into the client bundle).
-2. The app's **Redirect URIs** are registered in the Xaman Developer Console (https://apps.xumm.dev) for every origin you run from, such as `http://localhost:3000` for local dev and your production URL. Without a matching redirect URI the sign-in popup fails.
+1. `NEXT_PUBLIC_XUMM_API_KEY` is set.
+2. The app's Redirect URIs are registered in the Xaman Developer Console (https://apps.xumm.dev) for every origin you run from, such as `http://localhost:3000` for local dev and your production URL.
 
-This is separate from the sign-request flow: connecting resolves *who the user is* (their XRPL address), while `createXamanPayload`/`/api/xaman/payload` later asks them to *sign the specific deposit payment*, which still requires the server-side `XUMM_API_KEY`/`XUMM_API_SECRET` pair.
+This is separate from the sign-request flow: connecting resolves who the user is, while `createXamanPayload` and `/api/xaman/payload` later ask them to sign the specific vault instruction payment. That sign request still requires the server-side `XUMM_API_KEY` and `XUMM_API_SECRET` pair.
 
-### Instruction fee
+### Instruction Fee
 
-The XRPL payment amount sent to the operator (the "instruction fee") is currently fixed at 12 drops in the UI. Confirm the real fee with the operator before using this on mainnet.
+The XRPL payment amount sent to the operator is currently fixed at 12 drops in the UI. Confirm the real fee with the operator before using this on mainnet or for a public user demo.
 
 ## Run
 
@@ -46,5 +55,8 @@ npm run dev
 Environment variables (`apps/web/.env.local`):
 
 - `NEXT_PUBLIC_FLARE_RPC_URL` - override the default public Flare RPC.
-- `XUMM_API_KEY` / `XUMM_API_SECRET` - server-only Xaman Developer Console credentials (from https://apps.xumm.dev), used by the `/api/xaman/payload` route to create and poll sign requests. Required for the Xaman sign request step to work.
-- `NEXT_PUBLIC_XUMM_API_KEY` - same value as `XUMM_API_KEY`, exposed to the browser for the "Connect Xaman" sign-in button. See [Connecting Xaman](#connecting-xaman) above for the redirect-URI requirement.
+- `NEXT_PUBLIC_MASTER_ACCOUNT_CONTROLLER` - override the default MasterAccountController address.
+- `NEXT_PUBLIC_CARRY_FXRP_VAULT` - override the FXRP Carry Vault address.
+- `NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT` - override the candidate FXRP/USDT0 LP Carry Vault address.
+- `XUMM_API_KEY` / `XUMM_API_SECRET` - server-only Xaman Developer Console credentials, used by the `/api/xaman/payload` routes.
+- `NEXT_PUBLIC_XUMM_API_KEY` - public Xaman OAuth API key for the connect button.
