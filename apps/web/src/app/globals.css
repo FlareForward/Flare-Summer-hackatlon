@@ -1,15 +1,20 @@
 :root {
-  --bg: #080d18;
-  --card: #101827;
-  --card-strong: #151f31;
-  --border: #2a3448;
-  --border-strong: #3a4760;
-  --text: #f4f7fb;
-  --muted: #a7b4ca;
-  --accent: #e91659;
-  --green: #22c55e;
-  --gold: #f4bc62;
-  --shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  --bg: #07080c;
+  --bg-elevated: #0b0f16;
+  --panel: #0f141d;
+  --panel-2: #121925;
+  --panel-3: #171f2d;
+  --line: #263243;
+  --line-strong: #35445a;
+  --text: #f7f8fb;
+  --muted: #8d9aab;
+  --muted-strong: #b9c3d1;
+  --accent: #ff2e73;
+  --accent-2: #38d5d0;
+  --green: #34d399;
+  --gold: #f5c267;
+  --red: #fb7185;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
 }
 
 * {
@@ -20,9 +25,13 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: var(--bg);
+  background: radial-gradient(circle at 50% -18%, rgba(56, 213, 208, 0.12), transparent 34%), var(--bg);
   color: var(--text);
-  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  font-size: 15px;
 }
 
 button,
@@ -36,7 +45,7 @@ button {
 
 button:disabled {
   cursor: default;
-  opacity: 0.62;
+  opacity: 0.48;
 }
 
 a {
@@ -50,32 +59,33 @@ pre {
 
 .app-shell {
   min-height: 100vh;
-  padding-bottom: 40px;
+  padding-bottom: 48px;
 }
 
 .shell {
-  width: min(1180px, calc(100% - 32px));
+  width: min(1240px, calc(100% - 40px));
   margin: 0 auto;
 }
 
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 20px 0 14px;
+  gap: 12px;
+  padding: 22px 0 18px;
 }
 
 .brand-mark {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   place-items: center;
-  border: 1px solid rgba(244, 188, 98, 0.35);
-  border-radius: 14px;
-  background: rgba(244, 188, 98, 0.12);
-  color: var(--gold);
-  font-size: 14px;
-  font-weight: 800;
+  border: 1px solid rgba(56, 213, 208, 0.38);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(56, 213, 208, 0.16), rgba(255, 46, 115, 0.12));
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 850;
 }
 
 .header h1,
@@ -84,12 +94,24 @@ pre {
 .action-panel h2,
 .vault-card h3,
 .sign-box h3,
-.call-plan h3 {
+.call-plan h3,
+.position-panel h3 {
   margin: 0;
 }
 
 .header h1 {
-  font-size: 19px;
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.network-pill {
+  border: 1px solid rgba(52, 211, 153, 0.34);
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.08);
+  color: var(--green);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 750;
 }
 
 .eyebrow {
@@ -97,65 +119,94 @@ pre {
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .page-stack {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .panel,
 .panel-strong,
 .vault-card {
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 20, 29, 0.92);
   box-shadow: var(--shadow);
-}
-
-.panel-strong {
-  background: var(--card-strong);
-  border-color: var(--border-strong);
 }
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.75fr) minmax(280px, 0.55fr);
-  gap: 24px;
-  padding: 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.64fr);
+  gap: 18px;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(18, 25, 37, 0.98), rgba(11, 15, 22, 0.96));
+  padding: 18px;
+  box-shadow: var(--shadow);
 }
 
 .hero h2 {
-  max-width: 680px;
-  font-size: 38px;
-  line-height: 1.05;
+  max-width: 720px;
+  font-size: clamp(28px, 4vw, 48px);
+  line-height: 1;
   letter-spacing: 0;
 }
 
-.hero p:last-child,
-.section-heading > p,
-.vault-card p,
-.flow-step p,
-.selected-summary p,
-.sign-box p,
-.status-line {
-  color: var(--muted);
-  line-height: 1.5;
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.hero p:last-child {
-  align-self: end;
-  margin: 0;
-  font-size: 15px;
+.hero-stats > div,
+.vault-metrics > div,
+.vault-live-stats > div,
+.account-strip > div,
+.selected-summary,
+.position-card,
+.tx-dialog-row,
+.call-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.hero-stats > div {
+  display: grid;
+  align-content: end;
+  min-height: 108px;
+  padding: 14px;
+}
+
+.hero-stats span,
+.apr-block span,
+.vault-metrics span,
+.vault-live-stats span,
+.account-strip span,
+.selected-summary span,
+.position-label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hero-stats strong {
+  margin-top: 8px;
+  font-size: 16px;
 }
 
 .strategy-panel,
 .action-panel {
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  gap: 14px;
+  padding: 14px;
 }
 
 .section-heading {
@@ -163,6 +214,19 @@ pre {
   align-items: end;
   justify-content: space-between;
   gap: 18px;
+}
+
+.section-heading > p,
+.vault-card p,
+.flow-step p,
+.selected-summary p,
+.sign-box p,
+.status-line,
+.position-card p,
+.tx-dialog-header p,
+.tx-dialog-row p {
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .section-heading > p {
@@ -174,23 +238,27 @@ pre {
 
 .vault-list {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .vault-card {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
-  padding: 16px;
+  padding: 14px;
   color: var(--text);
   text-align: left;
-  transition: border-color 140ms ease, background 140ms ease;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
 .vault-card:hover,
 .vault-card.selected {
-  border-color: var(--vault-accent);
-  background: color-mix(in srgb, var(--vault-accent) 8%, var(--card));
+  border-color: color-mix(in srgb, var(--vault-accent) 68%, var(--line));
+  background: color-mix(in srgb, var(--vault-accent) 8%, var(--panel));
+}
+
+.vault-card:hover {
+  transform: translateY(-1px);
 }
 
 .vault-card-main {
@@ -203,66 +271,55 @@ pre {
 .pill-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 10px;
 }
 
 .pill,
 .selected-chip {
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 5px 9px;
-  font-size: 11px;
-  font-weight: 800;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 850;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .accent-pill {
-  border-color: color-mix(in srgb, var(--vault-accent) 48%, transparent);
+  border-color: color-mix(in srgb, var(--vault-accent) 50%, transparent);
   background: color-mix(in srgb, var(--vault-accent) 12%, transparent);
   color: var(--vault-accent);
 }
 
 .muted-pill {
-  color: var(--muted);
+  color: var(--muted-strong);
 }
 
 .vault-card h3 {
-  font-size: 18px;
+  font-size: 17px;
 }
 
 .vault-card p {
   margin: 6px 0 0;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .apr-block {
-  min-width: 118px;
+  min-width: 116px;
   text-align: right;
-}
-
-.apr-block span,
-.vault-metrics span,
-.account-strip span,
-.selected-summary span {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
 }
 
 .apr-block strong {
   display: block;
-  margin-top: 4px;
+  margin-top: 5px;
   color: var(--green);
   font-size: 24px;
   line-height: 1;
 }
 
-.apr-block em {
+.apr-block em,
+.vault-live-stats em {
   display: block;
   margin-top: 4px;
   color: var(--muted);
@@ -271,126 +328,170 @@ pre {
 }
 
 .vault-metrics,
-.account-strip {
+.account-strip,
+.vault-live-stats {
   display: grid;
+  gap: 8px;
+}
+
+.vault-metrics {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+}
+
+.account-strip {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.vault-live-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .vault-metrics > div,
+.vault-live-stats > div,
 .account-strip > div,
 .selected-summary {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 12px;
+  padding: 11px;
 }
 
 .vault-metrics strong,
+.vault-live-stats strong,
 .account-strip strong,
 .selected-summary strong {
   display: block;
   margin-top: 6px;
   overflow-wrap: anywhere;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .card-footer {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 11px;
   color: var(--muted);
   font-size: 13px;
 }
 
 .card-footer a {
-  color: var(--text);
+  color: var(--accent-2);
+  text-decoration: none;
 }
 
 .selected-chip {
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .selected-summary {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 16px;
+  gap: 14px;
   align-items: center;
 }
 
 .selected-summary strong {
   color: var(--green);
-  font-size: 22px;
+  font-size: 23px;
 }
 
 .selected-summary p,
 .sign-box p,
 .status-line {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .step-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .flow-step {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 11px;
   align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.025);
-  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 10px;
 }
 
 .flow-step > span {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--muted);
-  font-weight: 800;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .flow-step.done > span {
-  background: rgba(34, 197, 94, 0.14);
+  background: rgba(52, 211, 153, 0.14);
   color: var(--green);
 }
 
 .flow-step strong {
   display: block;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
+  font-size: 14px;
 }
 
 .flow-step p {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 input {
   width: 100%;
-  min-height: 42px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #080d18;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  background: #070a10;
   color: var(--text);
-  padding: 10px 12px;
+  padding: 10px 11px;
 }
 
-.flow-step input {
-  width: 150px;
+input:focus {
+  border-color: rgba(56, 213, 208, 0.58);
+  box-shadow: 0 0 0 3px rgba(56, 213, 208, 0.1);
 }
 
-.wallet-actions {
+.amount-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  width: min(180px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #070a10;
+}
+
+.amount-control input {
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+}
+
+.amount-control input:focus {
+  box-shadow: none;
+}
+
+.amount-control span {
+  padding: 0 11px;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.wallet-actions,
+.button-row {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
@@ -400,21 +501,33 @@ input {
 button,
 .primary-link {
   min-height: 38px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--accent);
+  border: 1px solid rgba(255, 46, 115, 0.58);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ff2e73, #dc1559);
   color: white;
   padding: 9px 13px;
   font-weight: 800;
   text-decoration: none;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+button:hover:not(:disabled),
+.primary-link:hover {
+  transform: translateY(-1px);
 }
 
 .ghost-button,
 .manage-grid button,
 .advanced-box summary {
-  border-color: var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.035);
   color: var(--text);
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 13px;
 }
 
 .manual-address {
@@ -434,14 +547,14 @@ button,
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  border-radius: 14px;
-  background: rgba(34, 197, 94, 0.07);
-  padding: 14px;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 8px;
+  background: rgba(52, 211, 153, 0.07);
+  padding: 12px;
 }
 
 .sign-box img {
-  border-radius: 10px;
+  border-radius: 8px;
   background: white;
 }
 
@@ -451,14 +564,94 @@ button,
   margin-top: 12px;
 }
 
+.position-panel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.position-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.position-panel h3 {
+  font-size: 16px;
+}
+
+.position-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.position-card {
+  display: grid;
+  gap: 11px;
+  align-content: space-between;
+  min-height: 186px;
+  padding: 12px;
+}
+
+.position-card strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 15px;
+}
+
+.position-card p {
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+
+.position-card .amount-control {
+  width: 100%;
+}
+
+.position-card button,
+.button-row button {
+  flex: 1 1 0;
+}
+
+.position-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.position-actions button {
+  flex: 1 1 140px;
+}
+
+.position-input {
+  display: grid;
+  flex: 1 1 150px;
+  gap: 6px;
+}
+
+.position-input span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.position-input input {
+  min-height: 44px;
+}
+
 .advanced-box {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   padding-top: 12px;
 }
 
 .advanced-box summary {
   width: fit-content;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 9px 12px;
   font-size: 13px;
   font-weight: 800;
@@ -497,9 +690,6 @@ button,
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
   padding: 10px;
   color: var(--muted);
   font-size: 13px;
@@ -514,16 +704,85 @@ pre {
   overflow: auto;
   max-height: 220px;
   margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: #07090f;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #06080d;
   padding: 12px;
   font-size: 12px;
 }
 
+.tx-dialog {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(141, 154, 171, 0.32);
+  border-radius: 8px;
+  background: rgba(15, 20, 29, 0.96);
+  padding: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+}
+
+.tx-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.tx-dialog-header h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.tx-dialog-header p,
+.tx-dialog-row p {
+  margin: 0;
+}
+
+.tx-dialog-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tx-dialog-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 11px;
+}
+
+.tx-dialog-row span {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tx-dialog-row.signed span {
+  color: var(--green);
+}
+
+.tx-dialog-row.failed span,
+.tx-error {
+  color: var(--red);
+}
+
+.tx-dialog-row .primary-link {
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.muted-note {
+  color: var(--muted);
+  font-size: 14px;
+}
+
 @media (min-width: 980px) {
   .page-stack {
-    grid-template-columns: minmax(0, 1fr) minmax(390px, 0.74fr);
+    grid-template-columns: minmax(0, 1fr) minmax(410px, 0.68fr);
     align-items: start;
   }
 
@@ -532,15 +791,17 @@ pre {
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 920px) {
   .hero,
   .section-heading,
   .vault-card-main,
   .selected-summary,
   .flow-step,
   .vault-metrics,
+  .vault-live-stats,
   .account-strip,
-  .manage-grid {
+  .manage-grid,
+  .position-grid {
     grid-template-columns: 1fr;
   }
 
@@ -553,13 +814,245 @@ pre {
     text-align: left;
   }
 
-  .flow-step input {
+  .hero-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .flow-step .amount-control {
     width: 100%;
   }
 
   .card-footer,
-  .sign-box {
+  .sign-box,
+  .position-panel-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .shell {
+    width: min(100% - 24px, 1240px);
+  }
+
+  .header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .network-pill {
+    grid-column: 1 / -1;
+    width: fit-content;
+  }
+
+  .hero-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-stats > div {
+    min-height: auto;
+  }
+
+  .wallet-actions,
+  .button-row {
+    width: 100%;
+  }
+
+  .wallet-actions button,
+  .button-row button,
+  .flow-step button {
+    flex: 1 1 0;
+  }
+}
+
+
+/* Simplified product layout: choose a strategy first, execute below. */
+.hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px;
+}
+
+.hero h2 {
+  max-width: 760px;
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.05;
+}
+
+.hero-stats {
+  min-width: min(520px, 100%);
+}
+
+.hero-stats > div {
+  min-height: 72px;
+  padding: 11px;
+}
+
+.strategy-panel {
+  gap: 12px;
+}
+
+.vault-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vault-card {
+  align-content: start;
+  min-height: 286px;
+  gap: 11px;
+  padding: 13px;
+}
+
+.vault-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vault-card-topline .pill-row {
+  margin-bottom: 0;
+}
+
+.select-indicator {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.vault-card.selected .select-indicator {
+  color: var(--green);
+}
+
+.vault-card-main {
+  min-height: 80px;
+}
+
+.vault-card h3 {
+  font-size: 18px;
+}
+
+.apr-block strong {
+  font-size: 26px;
+}
+
+.vault-metrics {
+  grid-template-columns: 1.35fr 0.65fr 0.9fr;
+}
+
+.vault-metrics > div {
+  padding: 10px;
+}
+
+.vault-metrics strong {
+  font-size: 12px;
+}
+
+.action-panel {
+  max-width: none;
+}
+
+@media (min-width: 980px) {
+  .page-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    grid-column: auto;
+  }
+
+  .step-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .flow-step {
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: start;
+    min-height: 150px;
+  }
+
+  .flow-step > button,
+  .flow-step > .wallet-actions,
+  .flow-step > .amount-control {
+    grid-column: 2;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .flow-step > button,
+  .wallet-actions button {
+    width: 100%;
+  }
+
+  .wallet-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 920px) {
+  .hero,
+  .vault-list,
+  .vault-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-stats {
+    min-width: 0;
+  }
+
+  .vault-card {
+    min-height: auto;
+  }
+}
+
+.vault-snapshot {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vault-snapshot > div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 10px;
+}
+
+.vault-snapshot span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.vault-snapshot strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.vault-snapshot > div:first-child strong {
+  color: var(--green);
+  font-size: 24px;
+}
+
+.vault-snapshot em {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.vault-card-main {
+  min-height: auto;
+}
+
+@media (max-width: 560px) {
+  .vault-snapshot {
+    grid-template-columns: 1fr;
   }
 }

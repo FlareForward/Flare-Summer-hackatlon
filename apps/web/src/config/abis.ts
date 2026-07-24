@@ -116,6 +116,23 @@ export const assetManagerAbi = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
+  },  {
+    type: 'function',
+    name: 'minimumRedeemAmountUBA',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'redeemAmount',
+    stateMutability: 'payable',
+    inputs: [
+      { name: '_amountUBA', type: 'uint256' },
+      { name: '_redeemerUnderlyingAddressString', type: 'string' },
+      { name: '_executor', type: 'address' },
+    ],
+    outputs: [{ name: '_redeemedAmountUBA', type: 'uint256' }],
   },
 ] as const;
 
@@ -156,6 +173,13 @@ export const carryVaultAbi = [
     name: 'balanceOf',
     stateMutability: 'view',
     inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'pendingSurplus',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
     outputs: [{ name: '', type: 'uint256' }],
   },
 ] as const;
@@ -260,6 +284,9 @@ export const carryVaultAprAbi = [
   { type: 'function', name: 'ltvBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'maxBorrowLtvBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint16' }] },
   { type: 'function', name: 'collateralValue', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'idleAssets', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'postedCollateral', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'totalAssets', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'collateralToken', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
   { type: 'function', name: 'irm', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
   { type: 'function', name: 'oracle', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
@@ -267,6 +294,8 @@ export const carryVaultAprAbi = [
   { type: 'function', name: 'marketId', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] },
   { type: 'function', name: 'venueCount', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'totalVenueAssets', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'repayableUsdt0', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'surplusUsdt0', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'venueAssets', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'uint256' }] },
   {
     type: 'function',
@@ -289,7 +318,7 @@ export const carryVaultAprAbi = [
   },
 ] as const;
 
-// Morpho Blue market accessor â€” vault's collateral/debt market lives here.
+// Morpho Blue market accessor ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â vault's collateral/debt market lives here.
 export const morphoMarketAbi = [
   {
     type: 'function',
@@ -312,7 +341,7 @@ export const morphoMarketAbi = [
   },
 ] as const;
 
-// Morpho Blue interest-rate model â€” used to price the vault's current borrow rate.
+// Morpho Blue interest-rate model ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â used to price the vault's current borrow rate.
 export const irmBorrowRateAbi = [
   {
     type: 'function',
@@ -347,7 +376,7 @@ export const irmBorrowRateAbi = [
   },
 ] as const;
 
-// kToken (Kinetic/Compound-style) lending venue â€” used to price the vault's supply rate.
+// kToken (Kinetic/Compound-style) lending venue ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â used to price the vault's supply rate.
 export const ktokenSupplyRateAbi = [
   { type: 'function', name: 'supplyRatePerTimestamp', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
 ] as const;
@@ -358,3 +387,4 @@ export const ktokenPositionAbi = [
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'exchangeRateStored', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
 ] as const;
+

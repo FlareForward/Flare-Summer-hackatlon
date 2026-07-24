@@ -1,13 +1,15 @@
-﻿'use client';
+'use client';
 
 export function Header() {
   return (
     <header className="shell header">
-      <div className="brand-mark">FX</div>
+      <div className="brand-mark">F</div>
       <div>
         <p className="eyebrow">Flare FXRP Gateway</p>
-        <h1>Earn with FXRP</h1>
+        <h1>FXRP Yield Console</h1>
       </div>
+      <div className="network-pill">Flare Mainnet</div>
     </header>
   );
 }
+

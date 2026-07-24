@@ -1,8 +1,7 @@
-﻿'use client';
+'use client';
 
 import type { VaultConfig } from '@/config/vaults';
-import { FLARE_EXPLORER } from '@/config/vaults';
-import { isZeroAddress, shortAddress } from '@/lib/format';
+import { formatToken, isZeroAddress } from '@/lib/format';
 import { useCarryVaultApr } from '@/lib/useCarryVaultApr';
 
 type Props = {
@@ -11,24 +10,42 @@ type Props = {
   onSelect: (vault: VaultConfig) => void;
 };
 
-// Only the FXRP Carry Vault is live on chain today; the LP carry vault (status: 'candidate')
-// falls back to its static estimate until it's deployed. See the TODO on that vault entry in
-// config/vaults.ts for what live wiring it needs once ready.
+function formatMetricPct(value: number | null): string {
+  return value == null ? '-' : `${value.toFixed(2)}%`;
+}
+
+function formatUsd(value: bigint | null): string {
+  return value == null ? '-' : `$${formatToken(value, 6)}`;
+}
+
 function useLiveOpportunity(vault: VaultConfig) {
   const canReadLive = vault.kind === 'carry' && vault.status === 'live' && !isZeroAddress(vault.address);
   const live = useCarryVaultApr(vault.address, canReadLive);
   if (live.netAprPct == null) {
-    return { display: vault.opportunityApr, sub: null as string | null, isLive: false };
+    return {
+      display: vault.opportunityApr,
+      sub: null as string | null,
+      totalAssets: null as bigint | null,
+      collateralValue: null as bigint | null,
+      debt: null as bigint | null,
+      ltvPct: null as number | null,
+    };
   }
   return {
     display: `${live.netAprPct.toFixed(2)}%`,
-    sub: live.spreadPct != null ? `Live · spread ${live.spreadPct.toFixed(2)}%` : 'Live',
-    isLive: true,
+    sub: live.spreadPct != null ? `Live spread ${live.spreadPct.toFixed(2)}%` : 'Live',
+    totalAssets: live.totalAssets,
+    collateralValue: live.collateralValue,
+    debt: live.debt,
+    ltvPct: live.ltvPct,
   };
 }
 
 export function VaultCard({ vault, selected, onSelect }: Props) {
   const opportunity = useLiveOpportunity(vault);
+  const tvlDisplay = opportunity.totalAssets == null ? '-' : formatToken(opportunity.totalAssets, vault.assetDecimals, vault.asset);
+  const tvlUsdDisplay = formatUsd(opportunity.collateralValue);
+  const debtDisplay = opportunity.debt == null ? '-' : `${formatToken(opportunity.debt, 6, 'USDT0')} debt`;
 
   return (
     <button
@@ -37,26 +54,43 @@ export function VaultCard({ vault, selected, onSelect }: Props) {
       onClick={() => onSelect(vault)}
       type="button"
     >
+      <div className="vault-card-topline">
+        <div className="pill-row">
+          <span className="pill accent-pill">{vault.opportunityLabel}</span>
+          <span className="pill muted-pill">{vault.status}</span>
+        </div>
+        <span className="select-indicator">{selected ? 'Selected' : 'Choose'}</span>
+      </div>
+
       <div className="vault-card-main">
         <div>
-          <div className="pill-row">
-            <span className="pill accent-pill">{vault.opportunityLabel}</span>
-            <span className="pill muted-pill">{vault.status}</span>
-          </div>
           <h3>{vault.name}</h3>
-          <p>{vault.summary}</p>
+          <p>{vault.bestFor}</p>
         </div>
-        <div className="apr-block">
-          <span>Opportunity</span>
+      </div>
+
+      <div className="vault-snapshot" aria-label={`${vault.name} metrics`}>
+        <div>
+          <span>Est. APR</span>
           <strong>{opportunity.display}</strong>
           {opportunity.sub ? <em>{opportunity.sub}</em> : null}
+        </div>
+        <div>
+          <span>TVL</span>
+          <strong>{tvlDisplay}</strong>
+          <em>{tvlUsdDisplay}</em>
+        </div>
+        <div>
+          <span>LTV</span>
+          <strong>{formatMetricPct(opportunity.ltvPct)}</strong>
+          <em>{debtDisplay}</em>
         </div>
       </div>
 
       <div className="vault-metrics">
         <div>
-          <span>Why enter</span>
-          <strong>{vault.opportunityReason}</strong>
+          <span>Strategy</span>
+          <strong>{vault.summary}</strong>
         </div>
         <div>
           <span>Risk</span>
@@ -66,17 +100,6 @@ export function VaultCard({ vault, selected, onSelect }: Props) {
           <span>Exit</span>
           <strong>{vault.exit}</strong>
         </div>
-      </div>
-
-      <div className="card-footer">
-        <span>{vault.bestFor}</span>
-        {!isZeroAddress(vault.address) ? (
-          <a href={`${FLARE_EXPLORER}/address/${vault.address}`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-            {shortAddress(vault.address)}
-          </a>
-        ) : (
-          <span>Not deployed</span>
-        )}
       </div>
     </button>
   );

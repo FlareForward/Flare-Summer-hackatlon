@@ -61,8 +61,10 @@ npm run dev
 Environment variables (`apps/web/.env.local`):
 
 - `NEXT_PUBLIC_FLARE_RPC_URL` - override the default public Flare RPC.
+- `XRPL_RPC_URL` / `NEXT_PUBLIC_XRPL_RPC_URL` - optional XRPL JSON-RPC endpoint used by the server route that reads the connected wallet XRP balance.
 - `NEXT_PUBLIC_MASTER_ACCOUNT_CONTROLLER` - override the default MasterAccountController address.
 - `NEXT_PUBLIC_ASSET_MANAGER_FXRP` - override the default FXRP AssetManager used for direct-mint fee and Core Vault reads.
+- `NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL` - optional executor handoff endpoint for the 0xFE direct-mint UserOp path when the inline memo exceeds XRPL's 1024-byte memo limit.
 - `NEXT_PUBLIC_FLARE_CONTRACT_REGISTRY` - override the default FlareContractRegistry address if needed by future registry reads.
 - `NEXT_PUBLIC_CARRY_FXRP_VAULT` - override the FXRP Carry Vault address.
 - `NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT` - override the candidate FXRP/USDT0 LP Carry Vault address.

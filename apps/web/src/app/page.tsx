@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { Header } from '@/components/Header';
@@ -13,21 +13,32 @@ export default function Home() {
     <div className="app-shell">
       <Header />
       <main className="shell page-stack">
-        <section className="hero panel-strong">
+        <section className="hero">
           <div>
-            <p className="eyebrow">No DeFi setup required</p>
-            <h2>Put FXRP to work from Xaman.</h2>
+            <p className="eyebrow">Smart Account Vaults</p>
+            <h2>Deploy XRP into Flare strategies from one console.</h2>
           </div>
-          <p>
-            Choose one managed strategy, enter an FXRP amount, and sign in Xaman. The vault handles the lending, borrowing, LP routing, and rebalancing behind the scenes.
-          </p>
+          <div className="hero-stats">
+            <div>
+              <span>Asset</span>
+              <strong>FXRP</strong>
+            </div>
+            <div>
+              <span>Execution</span>
+              <strong>XRPL signed</strong>
+            </div>
+            <div>
+              <span>Network</span>
+              <strong>Flare</strong>
+            </div>
+          </div>
         </section>
 
         <section className="strategy-panel panel">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Step 1</p>
-              <h2>Pick an opportunity</h2>
+              <p className="eyebrow">Markets</p>
+              <h2>Vault opportunities</h2>
             </div>
             <p>Estimated APR is a directional signal, not a guarantee.</p>
           </div>
@@ -48,3 +59,4 @@ export default function Home() {
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
-import { encodeAbiParameters, encodeFunctionData, parseUnits, zeroAddress, type Address, type Hex } from 'viem';
-import { carryVaultAbi, erc20Abi, erc4626VaultAbi, personalAccountAbi, swapRouterAbi } from '@/config/abis';
-import { FXRP_ADDRESS, FXRP_USDT0_SWAP_ROUTER, USDT0_ADDRESS, type VaultConfig } from '@/config/vaults';
+import { encodeAbiParameters, encodeFunctionData, keccak256, parseUnits, zeroAddress, type Address, type Hex } from 'viem';
+import { assetManagerAbi, carryVaultAbi, erc20Abi, erc4626VaultAbi, personalAccountAbi, swapRouterAbi } from '@/config/abis';
+import { ASSET_MANAGER_FXRP, FXRP_ADDRESS, FXRP_USDT0_SWAP_ROUTER, USDT0_ADDRESS, type VaultConfig } from '@/config/vaults';
 
 export type FsaCall = {
   target: Address;
@@ -42,16 +42,24 @@ const PACKED_USER_OPERATION_TUPLE = {
 } as const;
 
 const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as const;
+const MAX_UINT256 = (BigInt(1) << BigInt(256)) - BigInt(1);
 
-export function buildDepositCalls(vault: VaultConfig, amount: string, personalAccount: Address): FsaCall[] {
-  const assets = parseUnits(amount || '0', vault.assetDecimals);
-
+export function buildApproveAssetCall(vault: VaultConfig): FsaCall {
   const approve = encodeFunctionData({
     abi: erc20Abi,
     functionName: 'approve',
-    args: [vault.address, assets],
+    args: [vault.address, MAX_UINT256],
   });
 
+  return {
+    target: vault.assetAddress,
+    value: BigInt(0),
+    data: approve,
+    label: `Approve ${vault.asset} for ${vault.name}`,
+  };
+}
+
+export function buildDepositOnlyCall(vault: VaultConfig, assets: bigint, personalAccount: Address): FsaCall {
   const deposit =
     vault.depositMode === 'erc4626'
       ? encodeFunctionData({
@@ -65,22 +73,18 @@ export function buildDepositCalls(vault: VaultConfig, amount: string, personalAc
           args: [assets],
         });
 
-  return [
-    {
-      target: vault.assetAddress,
-      value: BigInt(0),
-      data: approve,
-      label: `Approve ${vault.asset}`,
-    },
-    {
-      target: vault.address,
-      value: BigInt(0),
-      data: deposit,
-      label: `Deposit into ${vault.name}`,
-    },
-  ];
+  return {
+    target: vault.address,
+    value: BigInt(0),
+    data: deposit,
+    label: `Deposit into ${vault.name}`,
+  };
 }
 
+export function buildDepositCalls(vault: VaultConfig, amount: string, personalAccount: Address): FsaCall[] {
+  const assets = parseUnits(amount || '0', vault.assetDecimals);
+  return [buildApproveAssetCall(vault), buildDepositOnlyCall(vault, assets, personalAccount)];
+}
 /**
  * Withdrawal is wired for carry-style FXRP vaults: `requestWithdrawal(shares)` is a single
  * atomic call that burns shares and pays FXRP straight to the caller (the PersonalAccount).
@@ -173,6 +177,34 @@ export function buildSwapUsdt0ToFxrpCalls(personalAccount: Address, amountIn: bi
   ];
 }
 
+export function buildRedeemFxrpToXrplCalls(amountUBA: bigint, xrplAddress: string): FsaCall[] {
+  const approve = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [ASSET_MANAGER_FXRP, amountUBA],
+  });
+
+  const redeem = encodeFunctionData({
+    abi: assetManagerAbi,
+    functionName: 'redeemAmount',
+    args: [amountUBA, xrplAddress, zeroAddress],
+  });
+
+  return [
+    {
+      target: FXRP_ADDRESS,
+      value: BigInt(0),
+      data: approve,
+      label: 'Approve FXRP redemption',
+    },
+    {
+      target: ASSET_MANAGER_FXRP,
+      value: BigInt(0),
+      data: redeem,
+      label: 'Redeem FXRP to XRPL',
+    },
+  ];
+}
 export function toCustomCalls(calls: FsaCall[]): CustomCall[] {
   return calls.map((call) => ({
     targetContract: call.target,
@@ -231,6 +263,31 @@ export function buildMemoFieldUserOp(args: {
   return `0xff${walletHex}${feeHex}${packedUserOperation}` as Hex;
 }
 
+export function buildHashCommittedUserOp(args: {
+  calls: FsaCall[];
+  sender: Address;
+  nonce: bigint;
+  walletId?: number;
+  executorFeeUBA?: bigint;
+}): { memo: Hex; packedUserOperation: Hex; userOpHash: Hex } {
+  const walletId = args.walletId ?? 0;
+  if (!Number.isInteger(walletId) || walletId < 0 || walletId > 255) {
+    throw new Error('walletId must fit in one byte.');
+  }
+  const executorFeeUBA = args.executorFeeUBA ?? BigInt(0);
+  if (executorFeeUBA < BigInt(0) || executorFeeUBA > BigInt('0xffffffffffffffff')) {
+    throw new Error('executorFeeUBA must fit in uint64.');
+  }
+  const packedUserOperation = encodePackedUserOperation(args);
+  const userOpHash = keccak256(packedUserOperation);
+  const walletHex = walletId.toString(16).padStart(2, '0');
+  const feeHex = executorFeeUBA.toString(16).padStart(16, '0');
+  return {
+    memo: `0xfe${walletHex}${feeHex}${userOpHash.slice(2)}` as Hex,
+    packedUserOperation,
+    userOpHash,
+  };
+}
 export function computeDirectMintingPaymentDrops(args: {
   netMintDrops: bigint;
   feeBips: bigint;
@@ -274,3 +331,4 @@ export function buildXamanPaymentTemplate(
     ],
   };
 }
+

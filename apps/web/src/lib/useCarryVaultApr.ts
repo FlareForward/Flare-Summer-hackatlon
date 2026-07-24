@@ -30,7 +30,7 @@ const EXCHANGE_RATE_SCALE = BigInt(10) ** BigInt(18);
 
 // This vault's `_venues` array lives at storage slot 23. Its `getVenue`/`venueAssets` view
 // helpers revert on the deployment behind this hackathon's FXRP Carry Vault (confirmed against
-// the live contract), so — same as STFLR VAULT's dashboard does for pre-helper deployments —
+// the live contract), so - same as STFLR VAULT's dashboard does for pre-helper deployments -
 // fall back to decoding the packed struct straight out of storage when the helper calls fail.
 const CARRY_VENUES_STORAGE_SLOT = BigInt(23);
 
@@ -59,10 +59,13 @@ function decodeCarryVenueStorage(slot0: `0x${string}` | undefined, slot1: `0x${s
 }
 
 export type CarryVaultApr = {
-  // Net APR on posted collateral, accounting for LTV dilution — this is the number to show as "Opportunity".
+  // Net APR on posted collateral, accounting for LTV dilution - this is the number to show as "Opportunity".
   netAprPct: number | null;
   // Raw supply-minus-borrow spread on a full-leverage basis (informational subtext).
   spreadPct: number | null;
+  totalAssets: bigint | null;
+  collateralValue: bigint | null;
+  debt: bigint | null;
   ltvPct: number | null;
   maxLtvPct: number | null;
   isLoading: boolean;
@@ -72,6 +75,9 @@ export type CarryVaultApr = {
 const INITIAL_STATE: CarryVaultApr = {
   netAprPct: null,
   spreadPct: null,
+  totalAssets: null,
+  collateralValue: null,
+  debt: null,
   ltvPct: null,
   maxLtvPct: null,
   isLoading: true,
@@ -103,7 +109,7 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
             args: args as never,
           }) as Promise<T>;
 
-        const [debt, ltvBps, maxBorrowLtvBps, irm, oracle, lltv, marketId, collateralToken] = await Promise.all([
+        const [debt, ltvBps, maxBorrowLtvBps, irm, oracle, lltv, marketId, collateralToken, totalAssetsRaw, idleAssets, postedCollateral] = await Promise.all([
           rc<bigint>('debt'),
           rc<bigint>('ltvBps'),
           rc<number>('maxBorrowLtvBps'),
@@ -112,7 +118,12 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
           rc<bigint>('lltv'),
           rc<`0x${string}`>('marketId'),
           rc<Address>('collateralToken'),
+          rc<bigint>('totalAssets').catch(() => null),
+          rc<bigint>('idleAssets').catch(() => ZERO),
+          rc<bigint>('postedCollateral').catch(() => ZERO),
         ]);
+        const collateralAssets = idleAssets + postedCollateral;
+        const totalAssets = totalAssetsRaw && totalAssetsRaw > ZERO ? totalAssetsRaw : collateralAssets > ZERO ? collateralAssets : totalAssetsRaw;
         const collateralValueRaw = await rc<bigint>('collateralValue').catch(() => ZERO);
         const effectiveCollateralValue = collateralValueRaw > ZERO
           ? collateralValueRaw
@@ -138,7 +149,13 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
         });
         const borrowAprPct = perSecondRateToAprPct(borrowRatePerSecond);
 
-        const deployedUsdt0 = await rc<bigint>('totalVenueAssets').catch(() => ZERO);
+        const [deployedUsdt0, repayableUsdt0, surplusUsdt0] = await Promise.all([
+          rc<bigint>('totalVenueAssets').catch(() => ZERO),
+          rc<bigint>('repayableUsdt0').catch(() => ZERO),
+          rc<bigint>('surplusUsdt0').catch(() => ZERO),
+        ]);
+        const repayableBorrowedPrincipal = repayableUsdt0 > surplusUsdt0 ? repayableUsdt0 - surplusUsdt0 : ZERO;
+        const earningPrincipalUsdt0 = deployedUsdt0 > repayableBorrowedPrincipal ? deployedUsdt0 : repayableBorrowedPrincipal;
         const venueCount = await rc<bigint>('venueCount').catch(() => ZERO);
 
         let supplyWeighted = 0;
@@ -250,15 +267,19 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
 
         const spreadPct = supplyAprPct - borrowAprPct;
         // Net APR on total posted collateral, accounting for LTV dilution:
-        // (interest earned on deployed USDT0 - interest paid on debt) / collateral value.
-        const netAprPct = (deployedUsdt0 > ZERO || debt > ZERO) && effectiveCollateralValue > ZERO
-          ? (((supplyAprPct / 100) * Number(deployedUsdt0) - (borrowAprPct / 100) * Number(debt)) / Number(effectiveCollateralValue)) * 100
+        // (interest earned on earning USDT0 principal - interest paid on debt) / collateral value.
+        // After withdrawals, venue assets can understate the still-funded borrow leg; repayable minus booked surplus tracks that active principal.
+        const netAprPct = (earningPrincipalUsdt0 > ZERO || debt > ZERO) && effectiveCollateralValue > ZERO
+          ? (((supplyAprPct / 100) * Number(earningPrincipalUsdt0) - (borrowAprPct / 100) * Number(debt)) / Number(effectiveCollateralValue)) * 100
           : spreadPct * (Number(maxBorrowLtvBps) / 10_000);
 
         if (!cancelled) {
           setState({
             netAprPct,
             spreadPct,
+            totalAssets,
+            collateralValue: effectiveCollateralValue > ZERO ? effectiveCollateralValue : null,
+            debt,
             ltvPct: Number(ltvBps) / 100,
             maxLtvPct: Number(maxBorrowLtvBps) / 100,
             isLoading: false,
@@ -286,3 +307,4 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
 
   return state;
 }
+
