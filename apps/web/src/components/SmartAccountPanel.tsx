@@ -82,6 +82,8 @@ export function SmartAccountPanel({ vault }: Props) {
   const [directMintMode, setDirectMintMode] = useState<DirectMintMode | undefined>();
   const [xamanPayload, setXamanPayload] = useState<XamanPayload | undefined>();
   const [xamanStatus, setXamanStatus] = useState<XamanPayloadStatus | undefined>();
+  const [activeXamanTxItemId, setActiveXamanTxItemId] = useState<string | undefined>();
+  const [xamanSequence, setXamanSequence] = useState<{ payments: DirectMintPayment[]; destination: string; currentIndex: number } | undefined>();
   const [baseline, setBaseline] = useState<{ fxrp?: bigint; shares?: bigint; usdt0?: bigint } | undefined>();
   const [executing, setExecuting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -179,6 +181,8 @@ export function SmartAccountPanel({ vault }: Props) {
       const payload = await createXamanPayload(operator, DEFAULT_FEE_DROPS, reference);
       setXamanPayload(payload);
       setXamanStatus(undefined);
+      setActiveXamanTxItemId(`xaman-${payload.uuid}`);
+      setXamanSequence(undefined);
       setExecuting(false);
       openTxDialog('Xaman XRPL payment', 'Open Xaman and sign the payment. The result will update here.', [
         { id: `xaman-${payload.uuid}`, label: 'Submit vault instruction', amountDrops: DEFAULT_FEE_DROPS, destination: operator, status: 'pending' },
@@ -232,6 +236,8 @@ export function SmartAccountPanel({ vault }: Props) {
       const payload = await createXamanPayload(destination, amountDrops, memo);
       setXamanPayload(payload);
       setXamanStatus(undefined);
+      setActiveXamanTxItemId(`xaman-${payload.uuid}`);
+      setXamanSequence(undefined);
       setExecuting(false);
       openTxDialog('Xaman direct-mint payment', 'Open Xaman and sign the payment. The result will update here.', [
         { id: `xaman-${payload.uuid}`, label: 'Direct-mint vault instruction', amountDrops, destination, status: 'pending' },
@@ -244,6 +250,40 @@ export function SmartAccountPanel({ vault }: Props) {
     }
   }
 
+  async function createXamanSequencePayload(payments: DirectMintPayment[], destination: string, index: number) {
+    const payment = payments[index];
+    const itemId = `xaman-direct-${index}`;
+    setStatus(`Creating Xaman request ${index + 1} of ${payments.length}...`);
+    const payload = await createXamanPayload(destination, payment.paymentDrops, payment.memo);
+    setXamanPayload(payload);
+    setXamanStatus(undefined);
+    setActiveXamanTxItemId(itemId);
+    setXamanSequence({ payments, destination, currentIndex: index });
+    setExecuting(false);
+    setTxDialogMessage(`Open Xaman and sign payment ${index + 1} of ${payments.length}.`);
+    setStatus(`Open Xaman and sign payment ${index + 1} of ${payments.length}: ${payment.label}.`);
+  }
+
+  async function signDirectMintWithXaman(payments: DirectMintPayment[], destination: string) {
+    openTxDialog('Xaman direct-mint payments', 'Open Xaman and sign each payment when prompted.', payments.map((payment, index) => ({
+      id: `xaman-direct-${index}`,
+      label: payment.label,
+      amountDrops: payment.paymentDrops,
+      destination,
+      status: 'pending' as const,
+    })));
+    try {
+      await createXamanSequencePayload(payments, destination, 0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create Xaman direct-mint payment.';
+      updateTxDialogItem('xaman-direct-0', { status: 'failed', error: message });
+      setTxDialogMessage(message);
+      setStatus(message);
+      setXamanSequence(undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submitHashCommittedUserOp(args: {
     memo: Hex;
     packedUserOperation: Hex;
@@ -420,8 +460,7 @@ export function SmartAccountPanel({ vault }: Props) {
       return;
     }
     if (payments.length > 1) {
-      setStatus('This entry exceeds XRPL\'s inline memo limit and needs two direct-mint payments. Use D\'CENT for the split flow, or configure NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL for one compact 0xFE payment.');
-      setBusy(false);
+      await signDirectMintWithXaman(payments, coreVaultXrplAddress);
       return;
     }
     await createDirectMintXamanPayment(payments[0].memo, coreVaultXrplAddress, payments[0].paymentDrops);
@@ -710,8 +749,7 @@ export function SmartAccountPanel({ vault }: Props) {
       return;
     }
     if (payments.length > 1) {
-      setStatus('This instruction needs multiple fee-only direct-mint payments. Use D\'CENT for this split flow.');
-      setBusy(false);
+      await signDirectMintWithXaman(payments, coreVaultXrplAddress);
       return;
     }
     await createDirectMintXamanPayment(payments[0].memo, coreVaultXrplAddress, payments[0].paymentDrops);
@@ -900,21 +938,31 @@ export function SmartAccountPanel({ vault }: Props) {
         const result = await getXamanPayloadStatus(xamanPayload.uuid);
         setXamanStatus(result);
         if (result.resolved) {
+          const txItemId = activeXamanTxItemId || `xaman-${xamanPayload.uuid}`;
           if (result.signed) {
-            updateTxDialogItem(`xaman-${xamanPayload.uuid}`, { status: 'signed', txid: result.txid });
-            setTxDialogMessage(result.txid ? 'XRPL transaction submitted. Waiting for Smart Account balances to update on Flare.' : 'Xaman signed, but no XRPL transaction hash is available yet.');
-            setStatus(`Signed in Xaman${result.txid ? ` (${shortAddress(result.txid)})` : ''}. Waiting for execution on Flare...`);
-            setBaseline({ fxrp: fxrpBalance, shares: shareBalance, usdt0: usdt0Balance });
-            executionAttempts.current = 0;
-            setExecuting(true);
+            updateTxDialogItem(txItemId, { status: 'signed', txid: result.txid });
+            if (xamanSequence && xamanSequence.currentIndex + 1 < xamanSequence.payments.length) {
+              const nextIndex = xamanSequence.currentIndex + 1;
+              setTxDialogMessage(`Payment ${xamanSequence.currentIndex + 1} signed. Preparing payment ${nextIndex + 1}.`);
+              await createXamanSequencePayload(xamanSequence.payments, xamanSequence.destination, nextIndex);
+            } else {
+              setTxDialogMessage(result.txid ? 'XRPL transaction submitted. Waiting for Smart Account balances to update on Flare.' : 'Xaman signed, but no XRPL transaction hash is available yet.');
+              setStatus(`Signed in Xaman${result.txid ? ` (${shortAddress(result.txid)})` : ''}. Waiting for execution on Flare...`);
+              setXamanSequence(undefined);
+              setBaseline({ fxrp: fxrpBalance, shares: shareBalance, usdt0: usdt0Balance });
+              executionAttempts.current = 0;
+              setExecuting(true);
+            }
           } else if (result.cancelled) {
-            updateTxDialogItem(`xaman-${xamanPayload.uuid}`, { status: 'failed', error: 'Cancelled in Xaman.' });
+            updateTxDialogItem(txItemId, { status: 'failed', error: 'Cancelled in Xaman.' });
             setTxDialogMessage('Xaman request was cancelled.');
             setStatus('Xaman request was cancelled.');
+            setXamanSequence(undefined);
           } else if (result.expired) {
-            updateTxDialogItem(`xaman-${xamanPayload.uuid}`, { status: 'failed', error: 'Xaman request expired.' });
+            updateTxDialogItem(txItemId, { status: 'failed', error: 'Xaman request expired.' });
             setTxDialogMessage('Xaman request expired. Try again.');
             setStatus('Xaman request expired. Try again.');
+            setXamanSequence(undefined);
           }
         }
       } catch {
@@ -922,7 +970,7 @@ export function SmartAccountPanel({ vault }: Props) {
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [xamanPayload, xamanStatus?.resolved, fxrpBalance, shareBalance, usdt0Balance]);
+  }, [xamanPayload, xamanStatus?.resolved, activeXamanTxItemId, xamanSequence, fxrpBalance, shareBalance, usdt0Balance]);
 
   useEffect(() => {
     if (!executing || !personalAccount) return undefined;
