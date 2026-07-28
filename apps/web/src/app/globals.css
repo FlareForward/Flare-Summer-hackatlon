@@ -1056,3 +1056,25 @@ pre {
     grid-template-columns: 1fr;
   }
 }
+
+.lp-carry-snapshot {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.lp-carry-footer {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 920px) {
+  .lp-carry-snapshot,
+  .lp-carry-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .lp-carry-snapshot,
+  .lp-carry-footer {
+    grid-template-columns: 1fr;
+  }
+}

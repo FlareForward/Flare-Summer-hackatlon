@@ -1,34 +1,33 @@
 # Next Steps
 
-## Current Product Decision
+## Before Final Submission
 
-Move forward with the FXRP Carry Vault path while the FXRP/USDT0 LP Carry Vault stays in candidate mode. The product should prove the Xaman -> Flare Smart Account -> vault position lifecycle before adding another active vault.
+- Add the public demo video link to `README.md` and `docs/SUBMISSION.md`.
+- Add the public presentation link to `README.md` and `docs/SUBMISSION.md`.
+- Add the production app URL if the project is deployed before submission.
+- Run `npm run build` after the final docs/app changes.
+- Run `npm run lint` after the final docs/app changes.
+- Do one final small-value Xaman or D'CENT demo against the intended vault and account.
 
-## Milestone 1 - Carry Path Readiness
+## Demo Hardening
 
-- Confirm `getPersonalAccount` works for the intended demo XRPL account.
-- Confirm FXRP, USDT0, and carry-vault share balance reads work for that PersonalAccount.
-- Confirm the operator XRPL address returned by `MasterAccountController.getXrplProviderWallets()` is the expected production/demo operator.
-- Confirm the real Smart Account instruction fee; replace the fixed 12-drop assumption before a public demo.
-- Record one carry-vault demo from D'CENT signature through PersonalAccount share update if the provider is available; otherwise record the same flow with Xaman.
-- Verify whether the D'CENT Chrome extension injects `window.xrpl`; if not, use the D'CENT in-app browser for wallet-native testing.
+- Keep the two-minute demo focused on one user, one problem, and one full working flow: XRP wallet to Flare Smart Account to vault shares.
+- Use the FXRP Carry Vault for the clearest beginner story.
+- Use the FXRP/USDT0 LP Carry Vault only if you want to show the advanced live metrics: LP range, leaf value, pool price, debt, and LTV.
+- Keep test amounts small and make sure the demo wallet has enough XRP for direct minting fees.
+- Confirm the Xaman Developer Console has redirect URIs for the deployed app and local fallback URL.
 
-## Milestone 2 - Direct Mint Entry
+## Engineering Follow-Ups
 
-- Keep the invalid `encodeCustomInstruction` payment-reference path out of the main entry action; migrate advanced non-entry actions to memo UserOps before public use.
-- Validate the implemented inline `0xFF` direct-mint memo path with D'CENT/Xaman: XRP payment mints FXRP to the PersonalAccount and carries the vault deposit `PackedUserOperation`.
-- Confirm the encoded `PersonalAccount.executeUserOp` call data for `FXRP.approve(vault, amount)` and `vault.deposit(amount)` stays below XRPL memo limits on the target amount/vault.
-- Add `0xFE` hash-commitment support and recovery states for stuck direct-mint memos.
-- Test D'CENT first if `window.xrpl` is available; keep Xaman as fallback.
+- Add production recovery UI for stuck `0xFE` committed UserOps.
+- Add richer transaction history so users can see the XRPL tx and eventual Flare execution together.
+- Add clearer APY provenance labels for each live APR component.
+- Add automated tests for direct-mint memo sizing, split-mode behavior, and Xaman route validation.
+- Keep LP vault caps conservative until repeated small Smart Account deposits and withdrawals pass.
 
-## Milestone 3 - LP Vault Activation
+## Out Of Scope For This Hackathon Repo
 
-- Keep FXRP/USDT0 LP Carry Vault as `candidate` until vault testing is complete.
-- Before activation, confirm deposits are open, keeper behavior is stable, risk settings are sane, and expected share/balance changes are observable.
-- Flip `entryEnabled` to `true` only after a complete Xaman-to-share-update test succeeds against the LP vault.
-
-## Later
-
-- Improve APY/risk explanation with live vault state.
-- Add richer withdrawal and recovery views.
-- Add more vaults only after the carry path lifecycle is trustworthy.
+- Publishing private keeper logic.
+- Publishing production secrets or `.env.local` files.
+- Turning the UI into a general-purpose vault dashboard.
+- Requiring the target XRP user to connect an EVM wallet for the main flow.

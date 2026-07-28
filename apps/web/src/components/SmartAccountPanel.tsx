@@ -120,8 +120,10 @@ export function SmartAccountPanel({ vault }: Props) {
   );
 
   // Same live-APR read as the vault cards; only the FXRP Carry Vault has this on chain today.
-  const liveApr = useCarryVaultApr(vault.address, vault.kind === 'carry' && vault.status === 'live' && !isZeroAddress(vault.address));
-  const estimatedAprDisplay = liveApr.netAprPct != null ? `${liveApr.netAprPct.toFixed(2)}%` : vault.opportunityApr;
+  const liveApr = useCarryVaultApr(vault.address, vault.kind === 'carry' && vault.status === 'live' && !isZeroAddress(vault.address), vault.leafAddress, vault.targetLtvBps);
+  const estimatedAprDisplay = liveApr.ltvAdjustedLeafAprPct != null
+    ? `${liveApr.ltvAdjustedLeafAprPct.toFixed(2)}%`
+    : liveApr.netAprPct != null ? `${liveApr.netAprPct.toFixed(2)}%` : vault.opportunityApr;
 
   async function refreshBalances(account = personalAccount) {
     if (!account || !isAddress(account)) return;

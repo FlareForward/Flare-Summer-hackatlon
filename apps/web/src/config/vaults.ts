@@ -16,6 +16,11 @@ export type VaultConfig = {
   address: Address;
   accent: string;
   range?: string;
+  leafLabel?: string;
+  leafAddress?: Address;
+  targetLtvBps?: number;
+  lpRangeLowerPrice?: string;
+  lpRangeUpperPrice?: string;
   status: 'live' | 'candidate';
   entryEnabled: boolean;
   readinessNote?: string;
@@ -65,20 +70,6 @@ export const VAULTS: VaultConfig[] = [
     bestFor: 'Simple FXRP yield without choosing lending venues yourself.',
     exit: 'Withdraw back to FXRP',
   },
-  // TODO(live APR): this vault is not deployed/finished yet, so VaultCard and SmartAccountPanel
-  // fall back to the static `opportunityApr` string below (see useLiveOpportunity in
-  // VaultCard.tsx, gated on `status === 'live'`). Once it's live, flip status to 'live' and it
-  // will attempt to read useCarryVaultApr automatically â€” but check first whether that hook's
-  // math actually applies here:
-  //   - useCarryVaultApr assumes idle debt sits in lending venues (kToken/ERC4626) the way the
-  //     plain FXRP Carry Vault does. This LP vault instead deploys borrowed USDT0 + FXRP into an
-  //     Enosys LP position (see STFLR VAULT's `isCarryLpVault` branch in
-  //     ui/src/components/VaultSelector.tsx and its `leafValue`/`idleUsdt0`/`deployedUsdt0`
-  //     fields), so "Opportunity" here is LP trading fees *plus* the carry spread, not just the
-  //     venue supply rate.
-  //   - Needs a new on-chain read (leaf value, LP fee accrual) rather than reusing
-  //     useCarryVaultApr as-is; port the LP-specific accounting from STFLR VAULT's
-  //     useCarryVaultOnChain before trusting a live number here.
   {
     id: 'carry-lp-fxrp-usdt0',
     name: 'FXRP/USDT0 LP Carry Vault',
@@ -89,12 +80,17 @@ export const VAULTS: VaultConfig[] = [
     assetDecimals: 6,
     shareDecimals: 6,
     assetAddress: FXRP_ADDRESS,
-    address: (process.env.NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT || '0x57efbbc0a8d33f9c859d0213de38d3a311658c97') as Address,
+    address: (process.env.NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT || '0x92613ec8058fbf6991f176a48cba2e2e7d8ba60c') as Address,
     accent: '#3FB7A4',
     range: '10%',
-    status: 'candidate',
-    entryEnabled: false,
-    readinessNote: 'Blocked until FXRP/USDT0 LP vault testing is complete.',
+    leafLabel: 'FXRP/USDT0 10% LP leaf',
+    leafAddress: '0xadb3f75c01eda514d476998f96523c1031dda25b',
+    targetLtvBps: 4000,
+    lpRangeLowerPrice: '1.0618',
+    lpRangeUpperPrice: '1.1688',
+    status: 'live',
+    entryEnabled: true,
+    readinessNote: "Seeded and enabled for small D'CENT/Xaman Smart Account deposit tests.",
     supportsCarryWithdrawals: true,
     summary: 'A higher-touch strategy: the vault borrows USDT0, pairs it with FXRP exposure, and manages LP deployment for you.',
     opportunityApr: 'Est. 12-22%',

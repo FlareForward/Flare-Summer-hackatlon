@@ -1,13 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Header } from '@/components/Header';
 import { SmartAccountPanel } from '@/components/SmartAccountPanel';
 import { VaultCard } from '@/components/VaultCard';
 import { VAULTS } from '@/config/vaults';
 
+const DEFAULT_VAULT_ID = 'carry-lp-fxrp-usdt0';
+
+function vaultById(id: string | null) {
+  return VAULTS.find((vault) => vault.id === id) ?? null;
+}
+
 export default function Home() {
-  const [selectedVault, setSelectedVault] = useState(VAULTS[0]);
+  const [selectedVault, setSelectedVault] = useState(vaultById(DEFAULT_VAULT_ID) ?? VAULTS[0]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedVault = vaultById(params.get('vault'));
+    if (requestedVault) setSelectedVault(requestedVault);
+  }, []);
+
+  function selectVault(vault: typeof selectedVault) {
+    setSelectedVault(vault);
+    const url = new URL(window.location.href);
+    url.searchParams.set('vault', vault.id);
+    window.history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}${url.hash}`);
+  }
 
   return (
     <div className="app-shell">
@@ -48,7 +67,7 @@ export default function Home() {
                 key={vault.id}
                 vault={vault}
                 selected={vault.id === selectedVault.id}
-                onSelect={setSelectedVault}
+                onSelect={selectVault}
               />
             ))}
           </div>
@@ -59,4 +78,3 @@ export default function Home() {
     </div>
   );
 }
-

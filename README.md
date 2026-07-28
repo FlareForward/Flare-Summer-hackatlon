@@ -1,72 +1,109 @@
 # Flare Summer Vault Gateway
 
-Hackathon UI for XRP users who want to access Flare vault products through Flare Smart Accounts.
+XRPL users can enter Flare yield vaults without first learning EVM wallets, bridges, or transaction routing. The app connects a Xaman or D'CENT XRPL wallet, resolves the user's Flare Smart Account, direct-mints FXRP from an XRP payment, and executes vault calls from that Smart Account.
 
-This repo intentionally includes only the public hackathon surface:
+This repository is the public hackathon submission surface. It includes the user-facing app, the vault contracts needed to understand the strategy, and documentation for judges. It intentionally excludes private keeper code, private deployment secrets, and production runtime services.
 
-- FXRP carry vault contracts
-- FXRP carry and FXRP/USDT0 carry LP vault contracts
-- A UI focused on Xaman/FSA vault interaction
+## Submission
 
-It intentionally excludes keeper code, backend runtime services, and private strategy vaults.
+- Demo video: add the final public link here.
+- Presentation: add the final public link here.
+- Submission checklist and demo script: [docs/SUBMISSION.md](docs/SUBMISSION.md)
+- Architecture notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Remaining work: [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)
 
-## Product State
+## Product
 
-The product is an XRPL-to-Flare vault gateway. The first production-ready lane is the FXRP Carry Vault. The FXRP/USDT0 LP Carry Vault remains visible as a candidate opportunity, but Smart Account entry is disabled until LP vault testing is complete.
+Flare Vault Gateway solves one problem: an XRP holder should be able to put XRP capital to work in Flare DeFi from the wallet they already use.
 
-Current readiness:
+The main working flow is:
 
-- `FXRP Carry Vault`: active entry target, pending final operator-fee and runtime-state confirmation.
-- `FXRP/USDT0 LP Carry Vault`: candidate only, blocked until LP vault testing is complete.
+1. Connect Xaman or D'CENT, or paste an XRPL address for read-only inspection.
+2. Resolve the XRPL account to its Flare Smart Account through `MasterAccountController`.
+3. Read XRPL XRP, Smart Account FXRP, USDT0, vault shares, surplus, live APR, TVL, debt, LTV, and LP status.
+4. Select a vault and enter an XRP amount.
+5. Sign an XRPL Payment to the FXRP Core Vault.
+6. The payment memo carries a Flare Smart Account UserOp that approves and deposits the newly minted FXRP.
+7. The UI polls Xaman/D'CENT result state, then polls Flare balances until the Smart Account position updates.
 
-## Current Scope
+## Flare Integration
 
-1. Show the FXRP Carry Vault as the active Smart Account entry path and the FXRP/USDT0 LP Carry Vault as a candidate opportunity.
-2. Connect a Xaman account with client-side OAuth2 PKCE sign-in or paste an XRPL address manually, then resolve it to its Flare Smart Account (`PersonalAccount`).
-3. Read FXRP, USDT0, and vault share balances from that PersonalAccount.
-4. Build approve, deposit, withdraw, claim-surplus, and surplus-swap call plans for supported vault actions.
-5. Resolve Smart Account state, read the current memo nonce, encode an inline `0xFF` direct-mint `PackedUserOperation`, and ask the XRPL wallet to pay the FXRP Core Vault with that memo so minted FXRP is deposited by the PersonalAccount.
-6. Create real Xaman sign requests for the resulting XRPL payments through server-side API routes so Xaman credentials never reach the browser.
-7. Poll the Xaman payload for signature, then poll on-chain balances to detect when the operator has relayed the FDC proof and executed the instruction on Flare.
+The project depends on Flare primitives in the product path, not as a passive add-on:
 
-The existing keeper remains in the original vault repository. This app never talks to the keeper directly. The FSA operator service is what turns a signed XRPL payment into a Flare transaction. The visible UI uses Xaman only and does not ask the user to connect a Flare wallet.
+- **FAssets / FXRP:** native XRP is direct-minted into FXRP through the FXRP AssetManager and Core Vault.
+- **Flare Smart Accounts:** XRPL signatures control a Flare `PersonalAccount`, so the user does not need a separate Flare wallet for the demo flow.
+- **FDC-enabled execution:** the signed XRPL payment is the source event that the Smart Account operator can prove and relay on Flare.
+- **Flare DeFi:** the Smart Account deposits FXRP into deployed carry vaults and manages withdrawals, surplus claims, swaps, and redemption.
+- **Live on-chain reads:** the UI reads vault state, Kinetic/Morpho borrow state, SparkDEX pool price, and ERC-4626 LP leaf performance directly from Flare.
 
-### Connecting Xaman
+## Vaults In Scope
 
-"Connect Xaman" uses `xumm-oauth2-pkce`, a client-side-only sign-in flow. It needs the app's API Key only, exposed to the browser as `NEXT_PUBLIC_XUMM_API_KEY`. Two things must be true for it to work:
+| Vault | Status | Demo Actions |
+| --- | --- | --- |
+| FXRP Carry Vault | Live | Mint and enter, deposit existing FXRP, withdraw shares to FXRP, claim USDT0 surplus, swap surplus to FXRP, redeem FXRP to XRPL XRP |
+| FXRP/USDT0 LP Carry Vault | Live for small tests | Mint and enter, deposit existing FXRP, withdraw shares, inspect LP range, leaf value, pool price, debt, and LTV |
 
-1. `NEXT_PUBLIC_XUMM_API_KEY` is set.
-2. The app's Redirect URIs are registered in the Xaman Developer Console (https://apps.xumm.dev) for every origin you run from, such as `http://localhost:3000` for local dev and your production URL.
+The LP vault is higher risk and more complex than the plain carry vault. It is enabled for the hackathon demo, but the README and UI frame it as a more advanced opportunity.
 
-This is separate from the sign-request flow: connecting resolves who the user is, while `createXamanPayload` and `/api/xaman/payload` later ask them to sign the specific vault instruction payment. That sign request still requires the server-side `XUMM_API_KEY` and `XUMM_API_SECRET` pair.
+## Repository Layout
 
-### Connecting D'CENT
+```text
+apps/web/          Next.js app for the hackathon UI
+contracts/src/     Solidity vault contracts relevant to the public demo
+contracts/script/  Reference deployment scripts
+docs/              Submission, architecture, and next-step notes
+```
 
-D'CENT support uses the wallet's XRPL provider when it is injected as `window.xrpl`. The same code path should work in D'CENT's in-app browser. If the Chrome extension exposes the same provider, it can be used for a desktop demo; if it does not inject `window.xrpl`, the app will show a provider-not-found message and Xaman remains the fallback.
-
-The D'CENT path signs and submits the XRPL Payment directly through `xrpl_signTransaction`. For vault entry, the payment goes to the FXRP Core Vault and carries the Smart Accounts direct-mint UserOp memo.
-
-### Direct Mint Fees
-
-Vault entry reads `directMintingPaymentAddress()`, `getDirectMintingExecutorFeeUBA()`, `getDirectMintingFeeBIPS()`, and `getDirectMintingMinimumFeeUBA()` from `AssetManagerFXRP`, then adds the required fees to the requested net FXRP mint amount. Advanced non-entry actions still use the older operator payment-reference prototype and should be migrated before public use.
-
-## Run
+## Run Locally
 
 ```bash
-cd apps/web
 npm install
 npm run dev
 ```
 
-Environment variables (`apps/web/.env.local`):
+Then open the local Next.js URL, usually `http://localhost:3000`.
 
-- `NEXT_PUBLIC_FLARE_RPC_URL` - override the default public Flare RPC.
-- `XRPL_RPC_URL` / `NEXT_PUBLIC_XRPL_RPC_URL` - optional XRPL JSON-RPC endpoint used by the server route that reads the connected wallet XRP balance.
-- `NEXT_PUBLIC_MASTER_ACCOUNT_CONTROLLER` - override the default MasterAccountController address.
-- `NEXT_PUBLIC_ASSET_MANAGER_FXRP` - override the default FXRP AssetManager used for direct-mint fee and Core Vault reads.
-- `NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL` - optional executor handoff endpoint for the 0xFE direct-mint UserOp path when the inline memo exceeds XRPL's 1024-byte memo limit.
-- `NEXT_PUBLIC_FLARE_CONTRACT_REGISTRY` - override the default FlareContractRegistry address if needed by future registry reads.
-- `NEXT_PUBLIC_CARRY_FXRP_VAULT` - override the FXRP Carry Vault address.
-- `NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT` - override the candidate FXRP/USDT0 LP Carry Vault address.
-- `XUMM_API_KEY` / `XUMM_API_SECRET` - server-only Xaman Developer Console credentials, used by the `/api/xaman/payload` routes.
-- `NEXT_PUBLIC_XUMM_API_KEY` - public Xaman OAuth API key for the connect button.
+Useful scripts:
+
+```bash
+npm run build
+npm run lint
+```
+
+`npm run lint` is currently a TypeScript check (`tsc --noEmit`) for the web app.
+
+## Environment
+
+Create `apps/web/.env.local` from [apps/web/.env.example](apps/web/.env.example).
+
+Required for the full Xaman demo:
+
+- `NEXT_PUBLIC_XUMM_API_KEY` - public Xaman OAuth key for connecting the wallet.
+- `XUMM_API_KEY` / `XUMM_API_SECRET` - server-only credentials for creating Xaman sign requests.
+
+Optional overrides:
+
+- `NEXT_PUBLIC_FLARE_RPC_URL` - Flare RPC, defaults to the public Flare RPC.
+- `XRPL_RPC_URL` / `NEXT_PUBLIC_XRPL_RPC_URL` - XRPL JSON-RPC endpoint for XRP balance reads.
+- `NEXT_PUBLIC_MASTER_ACCOUNT_CONTROLLER` - Flare Smart Accounts controller.
+- `NEXT_PUBLIC_ASSET_MANAGER_FXRP` - FXRP AssetManager.
+- `NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL` - executor endpoint for compact `0xFE` direct-mint UserOps when inline memos are too large.
+- `NEXT_PUBLIC_FLARE_CONTRACT_REGISTRY` - registry override for future reads.
+- `NEXT_PUBLIC_CARRY_FXRP_VAULT` - FXRP Carry Vault override.
+- `NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT` - FXRP/USDT0 LP Carry Vault override.
+
+For Xaman OAuth, register each app origin in the Xaman Developer Console, including `http://localhost:3000` for local demos and the deployed production URL.
+
+## Verification Path
+
+For judges or reviewers:
+
+1. Run `npm install` and `npm run build`.
+2. Start the web app with the env vars above.
+3. Connect Xaman or D'CENT.
+4. Confirm the app resolves a Flare Smart Account from the XRPL address.
+5. Select a vault, enter a small XRP amount, and sign the direct-mint payment.
+6. Watch the transaction dialog show the XRPL signature result.
+7. Refresh/poll balances until FXRP, vault shares, USDT0, or surplus state changes on Flare.
+
+The app never asks the target user to connect MetaMask, Rabby, Bifrost, or another EVM wallet for the main flow.

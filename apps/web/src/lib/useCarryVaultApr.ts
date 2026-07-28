@@ -5,13 +5,14 @@ import { encodeAbiParameters, keccak256, type Address } from 'viem';
 import { flarePublicClient } from '@/config/wagmi';
 import {
   carryVaultAprAbi,
+  algebraPoolAbi,
   erc4626VaultAbi,
   irmBorrowRateAbi,
   ktokenPositionAbi,
   ktokenSupplyRateAbi,
   morphoMarketAbi,
 } from '@/config/abis';
-import { USDT0_ADDRESS } from '@/config/vaults';
+import { FXRP_USDT0_POOL, USDT0_ADDRESS } from '@/config/vaults';
 
 // Ports the live-APR methodology from the STFLR VAULT dashboard's useCarryVaultOnChain
 // (ui/src/lib/hooks.ts): read the vault's Morpho Blue borrow rate and its lending venues'
@@ -27,6 +28,7 @@ const ZERO = BigInt(0);
 const ONE = BigInt(1);
 const BPS_DENOMINATOR = BigInt(10_000);
 const EXCHANGE_RATE_SCALE = BigInt(10) ** BigInt(18);
+const Q96 = 2 ** 96;
 
 // This vault's `_venues` array lives at storage slot 23. Its `getVenue`/`venueAssets` view
 // helpers revert on the deployment behind this hackathon's FXRP Carry Vault (confirmed against
@@ -68,6 +70,17 @@ export type CarryVaultApr = {
   debt: bigint | null;
   ltvPct: number | null;
   maxLtvPct: number | null;
+  leafAprPct: number | null;
+  ltvAdjustedLeafAprPct: number | null;
+  effectiveEstimateLtvPct: number | null;
+  idleCollateral: bigint | null;
+  postedCollateral: bigint | null;
+  leafValue: bigint | null;
+  leafShares: bigint | null;
+  idleUsdt0: bigint | null;
+  totalCollateral: bigint | null;
+  totalRecoverable: bigint | null;
+  currentPoolPrice: number | null;
   isLoading: boolean;
   error: string | null;
 };
@@ -80,15 +93,31 @@ const INITIAL_STATE: CarryVaultApr = {
   debt: null,
   ltvPct: null,
   maxLtvPct: null,
+  leafAprPct: null,
+  ltvAdjustedLeafAprPct: null,
+  effectiveEstimateLtvPct: null,
+  idleCollateral: null,
+  postedCollateral: null,
+  leafValue: null,
+  leafShares: null,
+  idleUsdt0: null,
+  totalCollateral: null,
+  totalRecoverable: null,
+  currentPoolPrice: null,
   isLoading: true,
   error: null,
 };
+
+function sqrtPriceX96ToUsdt0PerFxrp(sqrtPriceX96: bigint): number {
+  const sqrt = Number(sqrtPriceX96) / Q96;
+  return sqrt * sqrt;
+}
 
 function perSecondRateToAprPct(ratePerSecond: bigint): number {
   return (Number(ratePerSecond) / 1e18) * SECONDS_PER_YEAR * 100;
 }
 
-export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): CarryVaultApr {
+export function useCarryVaultApr(vaultAddress: Address, enabled: boolean, leafAddress?: Address, targetLtvBps?: number): CarryVaultApr {
   const [state, setState] = useState<CarryVaultApr>(enabled ? INITIAL_STATE : { ...INITIAL_STATE, isLoading: false });
 
   useEffect(() => {
@@ -109,7 +138,7 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
             args: args as never,
           }) as Promise<T>;
 
-        const [debt, ltvBps, maxBorrowLtvBps, irm, oracle, lltv, marketId, collateralToken, totalAssetsRaw, idleAssets, postedCollateral] = await Promise.all([
+        const [debt, ltvBps, maxBorrowLtvBps, irm, oracle, lltv, marketId, collateralToken, totalAssetsRaw, idleAssets, postedCollateral, idleUsdt0, leafValue, leaf] = await Promise.all([
           rc<bigint>('debt'),
           rc<bigint>('ltvBps'),
           rc<number>('maxBorrowLtvBps'),
@@ -121,9 +150,32 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
           rc<bigint>('totalAssets').catch(() => null),
           rc<bigint>('idleAssets').catch(() => ZERO),
           rc<bigint>('postedCollateral').catch(() => ZERO),
+          rc<bigint>('idleUsdt0').catch(() => ZERO),
+          rc<bigint>('leafValue').catch(() => ZERO),
+          rc<Address>('leaf').catch(() => '0x0000000000000000000000000000000000000000' as Address),
         ]);
-        const collateralAssets = idleAssets + postedCollateral;
-        const totalAssets = totalAssetsRaw && totalAssetsRaw > ZERO ? totalAssetsRaw : collateralAssets > ZERO ? collateralAssets : totalAssetsRaw;
+        const leafShares = leaf === '0x0000000000000000000000000000000000000000'
+          ? ZERO
+          : await flarePublicClient.readContract({
+            address: leaf,
+            abi: erc4626VaultAbi,
+            functionName: 'balanceOf',
+            args: [vaultAddress],
+          }).catch(() => ZERO);
+        const totalCollateral = idleAssets + postedCollateral;
+        const totalRecoverable = idleAssets + leafValue;
+        let currentPoolPrice: number | null = null;
+        try {
+          const [sqrtPriceX96] = await flarePublicClient.readContract({
+            address: FXRP_USDT0_POOL,
+            abi: algebraPoolAbi,
+            functionName: 'globalState',
+          });
+          currentPoolPrice = sqrtPriceX96ToUsdt0PerFxrp(sqrtPriceX96);
+        } catch {
+          currentPoolPrice = null;
+        }
+        const totalAssets = totalAssetsRaw && totalAssetsRaw > ZERO ? totalAssetsRaw : totalCollateral > ZERO ? totalCollateral : totalAssetsRaw;
         const collateralValueRaw = await rc<bigint>('collateralValue').catch(() => ZERO);
         const effectiveCollateralValue = collateralValueRaw > ZERO
           ? collateralValueRaw
@@ -131,6 +183,46 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
             ? (debt * BPS_DENOMINATOR) / ltvBps
             : ZERO;
 
+        let leafAprPct: number | null = null;
+        const configuredLeaf = leafAddress && leafAddress !== '0x0000000000000000000000000000000000000000'
+          ? leafAddress
+          : leaf !== '0x0000000000000000000000000000000000000000'
+            ? leaf
+            : null;
+        if (configuredLeaf) {
+          try {
+            const blockNumber = await flarePublicClient.getBlockNumber();
+            const sevenDaysOfBlocks = FLARE_BLOCKS_PER_DAY * BigInt(7);
+            const pastBlockNumber = blockNumber > sevenDaysOfBlocks ? blockNumber - sevenDaysOfBlocks : ONE;
+            const oneShare = BigInt(1_000_000_000_000_000_000);
+            const [assetsNow, assetsPast] = await Promise.all([
+              flarePublicClient.readContract({
+                address: configuredLeaf,
+                abi: erc4626VaultAbi,
+                functionName: 'convertToAssets',
+                args: [oneShare],
+              }),
+              flarePublicClient.readContract({
+                address: configuredLeaf,
+                abi: erc4626VaultAbi,
+                functionName: 'convertToAssets',
+                args: [oneShare],
+                blockNumber: pastBlockNumber,
+              }),
+            ]);
+            if (assetsPast > ZERO) {
+              leafAprPct = ((Number(assetsNow) - Number(assetsPast)) / Number(assetsPast)) * (365 / 7) * 100;
+            }
+          } catch {
+            leafAprPct = null;
+          }
+        }
+        const liveLtvBps = Number(ltvBps);
+        const estimateLtvBps = liveLtvBps > 0 ? liveLtvBps : targetLtvBps ?? Number(maxBorrowLtvBps);
+        const effectiveEstimateLtvPct = Number.isFinite(estimateLtvBps) ? estimateLtvBps / 100 : null;
+        const ltvAdjustedLeafAprPct = leafAprPct === null || effectiveEstimateLtvPct === null
+          ? null
+          : leafAprPct * (effectiveEstimateLtvPct / 100);
         const market = await flarePublicClient.readContract({
           address: MORPHO_BLUE,
           abi: morphoMarketAbi,
@@ -263,15 +355,15 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
         }
 
         const supplyAprPct = supplyCovered > ZERO ? supplyWeighted / Number(supplyCovered) : bestSupplyAprPct;
-        if (supplyAprPct === null) throw new Error('No readable lending-venue rate.');
-
-        const spreadPct = supplyAprPct - borrowAprPct;
+        const spreadPct = supplyAprPct === null ? null : supplyAprPct - borrowAprPct;
         // Net APR on total posted collateral, accounting for LTV dilution:
         // (interest earned on earning USDT0 principal - interest paid on debt) / collateral value.
         // After withdrawals, venue assets can understate the still-funded borrow leg; repayable minus booked surplus tracks that active principal.
-        const netAprPct = (earningPrincipalUsdt0 > ZERO || debt > ZERO) && effectiveCollateralValue > ZERO
-          ? (((supplyAprPct / 100) * Number(earningPrincipalUsdt0) - (borrowAprPct / 100) * Number(debt)) / Number(effectiveCollateralValue)) * 100
-          : spreadPct * (Number(maxBorrowLtvBps) / 10_000);
+        const netAprPct = supplyAprPct === null
+          ? null
+          : (earningPrincipalUsdt0 > ZERO || debt > ZERO) && effectiveCollateralValue > ZERO
+            ? (((supplyAprPct / 100) * Number(earningPrincipalUsdt0) - (borrowAprPct / 100) * Number(debt)) / Number(effectiveCollateralValue)) * 100
+            : spreadPct! * (Number(maxBorrowLtvBps) / 10_000);
 
         if (!cancelled) {
           setState({
@@ -282,6 +374,17 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
             debt,
             ltvPct: Number(ltvBps) / 100,
             maxLtvPct: Number(maxBorrowLtvBps) / 100,
+            leafAprPct,
+            ltvAdjustedLeafAprPct,
+            effectiveEstimateLtvPct,
+            idleCollateral: idleAssets,
+            postedCollateral,
+            leafValue,
+            leafShares,
+            idleUsdt0,
+            totalCollateral,
+            totalRecoverable,
+            currentPoolPrice,
             isLoading: false,
             error: null,
           });
@@ -303,7 +406,7 @@ export function useCarryVaultApr(vaultAddress: Address, enabled: boolean): Carry
       cancelled = true;
       clearInterval(interval);
     };
-  }, [vaultAddress, enabled]);
+  }, [vaultAddress, enabled, leafAddress, targetLtvBps]);
 
   return state;
 }
