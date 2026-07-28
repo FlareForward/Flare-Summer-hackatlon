@@ -2,8 +2,8 @@
 
 ## Links To Fill In
 
-- Demo video: add public link here.
-- Presentation: add public link here.
+- Demo video: https://youtu.be/RA7R3PjkLA0
+- Full presentation: https://www.youtube.com/watch?v=epECZjT5so4
 - Live app: add deployed URL here, if available.
 - Repository: add GitHub URL here, if needed by the submission form.
 

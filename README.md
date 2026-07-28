@@ -6,8 +6,8 @@ This repository is the public hackathon submission surface. It includes the user
 
 ## Submission
 
-- Demo video: add the final public link here.
-- Presentation: add the final public link here.
+- Demo video: https://youtu.be/RA7R3PjkLA0
+- Full presentation: https://www.youtube.com/watch?v=epECZjT5so4
 - Submission checklist and demo script: [docs/SUBMISSION.md](docs/SUBMISSION.md)
 - Architecture notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Remaining work: [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)
