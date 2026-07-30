@@ -1032,6 +1032,11 @@ export function SmartAccountPanel({ vault }: Props) {
         <p>{vault.bestFor}</p>
       </div>
 
+      <p className="behind-the-click">
+        Behind this one signature, the vault can borrow, swap, and manage an LP position across several Flare
+        protocols. You don&apos;t need to understand lending, borrowing, swaps, or rebalancing to use it.
+      </p>
+
       <div className="step-list">
         <div className={xamanAccount || dcentAccount ? 'flow-step done' : 'flow-step'}>
           <span>1</span>
