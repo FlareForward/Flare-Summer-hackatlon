@@ -1,6 +1,6 @@
 'use client';
 
-import { RangeGlyph } from './RangeGlyph';
+import { RiskManagementGlyph } from './RiskManagementGlyph';
 import { useLandingVaultReadout } from './useLandingVaultReadout';
 
 const QUESTIONS = [
@@ -32,10 +32,10 @@ export function Problem() {
         </div>
 
         <div className="landing-drift-card">
-          <RangeGlyph variant={readout.inZone === false ? 'drifted' : 'centered'} />
+          <RiskManagementGlyph />
           <p className="landing-caption">
-            The shaded band is the zone where your money earns the most. Once it drifts out, it earns less &mdash;
-            until someone (or something) moves it back.
+            Risk is managed continuously. The vault monitors the loan-to-value ratio and rebalances before it reaches
+            the configured borrowing limit.
           </p>
           <div className="landing-hud-rows">
             <div className="landing-hud-row">
@@ -44,7 +44,7 @@ export function Problem() {
             </div>
             <div className="landing-hud-row">
               <span>Loan-to-value (LTV)</span>
-              <span>{readout.ltvLabel}</span>
+              <span>{readout.ltvLabel} / {readout.maxLtvLabel} max</span>
             </div>
           </div>
         </div>

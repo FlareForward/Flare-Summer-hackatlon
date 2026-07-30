@@ -8,12 +8,14 @@ import { Curious } from '@/components/landing/Curious';
 import { Why } from '@/components/landing/Why';
 import { Note } from '@/components/landing/Note';
 import { Final } from '@/components/landing/Final';
+import { LandingVaultReadoutProvider } from '@/components/landing/useLandingVaultReadout';
 
 export default function LandingPage() {
   return (
-    <div className="landing-page">
-      <ScrollRail />
-      <div className="landing-body">
+    <LandingVaultReadoutProvider>
+      <div className="landing-page">
+        <ScrollRail />
+        <div className="landing-body">
         <Hero />
         <Problem />
         <Solution />
@@ -26,7 +28,8 @@ export default function LandingPage() {
           <span>Flare Vault Gateway &middot; hackathon demo</span>
           <span>Built on Flare</span>
         </footer>
+        </div>
       </div>
-    </div>
+    </LandingVaultReadoutProvider>
   );
 }

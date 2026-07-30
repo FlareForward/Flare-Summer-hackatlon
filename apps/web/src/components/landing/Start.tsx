@@ -12,15 +12,27 @@ export function Start() {
         </p>
         <div className="landing-wallet-row">
           <span className="landing-wallet-chip">
-            <span className="landing-wallet-logo">
+            <a
+              className="landing-wallet-logo"
+              href="http://xaman.app/"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Visit Xaman"
+            >
               <img src="/images/xaman.avif" alt="" width={20} height={20} />
-            </span>
+            </a>
             Xaman
           </span>
           <span className="landing-wallet-chip">
-            <span className="landing-wallet-logo">
+            <a
+              className="landing-wallet-logo"
+              href="https://www.dcentwallet.com/"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Visit D'CENT Wallet"
+            >
               <img src="/images/dcent.svg" alt="" width={44} height={13} />
-            </span>
+            </a>
             D&rsquo;CENT
           </span>
         </div>

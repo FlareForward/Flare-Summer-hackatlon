@@ -45,8 +45,8 @@ export function Hero() {
               <span>{readout.currentPriceLabel}</span>
             </div>
             <div className="landing-hud-row">
-              <span>Status</span>
-              <span style={{ color: readout.inZone === false ? 'var(--l-warn)' : 'var(--l-good)' }}>{readout.statusLabel}</span>
+              <span>Estimated APR</span>
+              <span style={{ color: 'var(--l-good)' }}>{readout.aprLabel}</span>
             </div>
           </div>
         </div>
