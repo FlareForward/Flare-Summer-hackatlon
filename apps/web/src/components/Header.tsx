@@ -7,8 +7,8 @@ export function Header() {
     <header className="shell header">
       <div className="brand-mark">F</div>
       <div>
-        <p className="eyebrow">Flare FXRP Gateway</p>
-        <h1>FXRP Yield Console</h1>
+        <p className="eyebrow">Flare Smart Account Gateway</p>
+        <h1>Smart Account DeFi</h1>
       </div>
       <div className="header-actions">
         <Link href="/" className="ghost-button compact-button back-link">
@@ -19,4 +19,3 @@ export function Header() {
     </header>
   );
 }
-

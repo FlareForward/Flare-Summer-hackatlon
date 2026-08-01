@@ -28,6 +28,46 @@ export const erc20Abi = [
   },
 ] as const;
 
+export const spectraPoolAbi = [
+  {
+    type: 'function',
+    name: 'coins',
+    stateMutability: 'view',
+    inputs: [{ name: 'index', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'balances',
+    stateMutability: 'view',
+    inputs: [{ name: 'index', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'get_dy',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'i', type: 'int128' },
+      { name: 'j', type: 'int128' },
+      { name: 'dx', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'exchange',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'i', type: 'int128' },
+      { name: 'j', type: 'int128' },
+      { name: 'dx', type: 'uint256' },
+      { name: 'min_dy', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
 const customCallComponents = [
   { name: 'targetContract', type: 'address' },
   { name: 'value', type: 'uint256' },
@@ -448,4 +488,3 @@ export const ktokenPositionAbi = [
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'exchangeRateStored', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
 ] as const;
-

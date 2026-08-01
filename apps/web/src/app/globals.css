@@ -159,6 +159,34 @@ pre {
   gap: 14px;
 }
 
+.product-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(12, 8, 32, 0.9);
+  box-shadow: var(--shadow);
+}
+
+.product-tab {
+  display: grid;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-strong);
+  padding: 12px 16px;
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.product-tab:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
+.product-tab.active { border-color: var(--line-strong); background: linear-gradient(135deg, rgba(87, 198, 255, 0.11), rgba(181, 115, 255, 0.12)); color: var(--text); }
+.product-tab span { font-family: var(--font-display); font-size: 17px; font-weight: 650; }
+.product-tab small { color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
+
 .panel,
 .panel-strong,
 .vault-card {
@@ -186,6 +214,29 @@ pre {
   line-height: 1;
   letter-spacing: 0;
 }
+
+.hero-description { max-width: 720px; margin: 12px 0 0; color: var(--muted-strong); font-size: 14px; line-height: 1.55; }
+.experimental-hero { border-color: rgba(255, 183, 92, 0.24); }
+.defi-hero { border-color: rgba(91, 232, 181, 0.24); background: linear-gradient(135deg, rgba(12, 44, 49, 0.72), rgba(12, 8, 32, 0.96)); }
+
+.product-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 14px;
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.product-notice strong { white-space: nowrap; font-size: 12px; }
+.experimental-notice { border-color: rgba(255, 183, 92, 0.3); background: rgba(255, 183, 92, 0.07); }
+.experimental-notice strong { color: var(--gold); }
+.defi-notice { border-color: rgba(91, 232, 181, 0.3); background: rgba(91, 232, 181, 0.06); }
+.defi-notice strong { color: var(--green); }
 
 .hero-stats {
   display: grid;
@@ -325,6 +376,176 @@ pre {
 
 .muted-pill {
   color: var(--muted-strong);
+}
+
+.experimental-pill { border-color: rgba(255, 183, 92, 0.38); background: rgba(255, 183, 92, 0.09); color: var(--gold); }
+.defi-marketplace { gap: 16px; }
+
+.protocol-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(91, 232, 181, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(91, 232, 181, 0.06), rgba(255, 255, 255, 0.02));
+  padding: 16px;
+}
+
+.protocol-card-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: start; }
+.protocol-monogram { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(91, 232, 181, 0.38); border-radius: 9px; background: rgba(91, 232, 181, 0.1); color: var(--green); font-family: var(--font-display); font-size: 19px; font-weight: 700; }
+.protocol-card .pill-row { margin-bottom: 8px; }
+.protocol-pill { border-color: rgba(91, 232, 181, 0.38); background: rgba(91, 232, 181, 0.08); color: var(--green); }
+.protocol-card h3 { margin: 0; font-family: var(--font-display); font-size: 21px; font-weight: 650; }
+.protocol-card p { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.protocol-status { min-width: 112px; text-align: right; }
+
+.protocol-status span,
+.protocol-facts span { display: block; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+
+.protocol-status strong { display: block; margin-top: 5px; color: var(--green); font-size: 22px; }
+.protocol-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.protocol-facts > div { border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.025); padding: 11px; }
+.protocol-facts strong { display: block; margin-top: 6px; font-size: 13px; }
+.protocol-card-footer { display: flex; justify-content: space-between; gap: 16px; align-items: center; border-top: 1px solid var(--line); padding-top: 12px; }
+.protocol-card-footer p { margin: 0; }
+.availability-chip { flex: none; border: 1px solid var(--line-strong); border-radius: 999px; padding: 7px 10px; color: var(--muted-strong); font-size: 11px; font-weight: 800; }
+
+.spectra-marketplace-panel,
+.spectra-trade-panel {
+  gap: 14px;
+}
+
+.spectra-market-list {
+  display: grid;
+  gap: 10px;
+}
+
+.spectra-market-card,
+.spectra-suggestion-card {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  padding: 12px;
+  text-align: left;
+}
+
+.spectra-market-card:hover,
+.spectra-market-card.selected,
+.spectra-suggestion-card:hover,
+.spectra-suggestion-card.selected {
+  border-color: rgba(91, 232, 181, 0.42);
+  background: rgba(91, 232, 181, 0.07);
+}
+
+.spectra-market-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.spectra-market-main strong,
+.spectra-suggestion-card strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 18px;
+}
+
+.spectra-market-main p,
+.spectra-suggestion-card p,
+.spectra-suggestion-card em,
+.spectra-empty p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.spectra-market-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.spectra-market-actions span {
+  border: 1px solid rgba(91, 232, 181, 0.3);
+  border-radius: 999px;
+  color: var(--green);
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.compact-facts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.spectra-empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.spectra-suggestions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.spectra-order-box {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 12px;
+}
+
+.trade-side-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0a0718;
+}
+
+.trade-side-tabs button {
+  min-height: 34px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-strong);
+  padding: 7px 10px;
+}
+
+.trade-side-tabs button.active {
+  border-color: rgba(91, 232, 181, 0.35);
+  background: rgba(91, 232, 181, 0.1);
+  color: var(--green);
+}
+
+.spectra-amount {
+  width: 100%;
+}
+
+.spectra-advanced {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.spectra-advanced[open] {
+  min-width: 180px;
+}
+
+.spectra-sign-button {
+  justify-self: end;
 }
 
 .vault-card h3 {
@@ -1152,4 +1373,33 @@ pre {
   .lp-carry-footer {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 920px) {
+  .protocol-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .spectra-order-box,
+  .spectra-suggestions,
+  .compact-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .product-tabs,
+  .product-notice,
+  .protocol-card-main,
+  .protocol-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .product-notice strong { white-space: normal; }
+  .protocol-status { text-align: left; }
+  .protocol-card-footer { align-items: flex-start; flex-direction: column; }
+  .spectra-market-main,
+  .spectra-market-actions,
+  .trade-side-tabs { flex-direction: column; }
+  .spectra-sign-button { justify-self: stretch; }
 }

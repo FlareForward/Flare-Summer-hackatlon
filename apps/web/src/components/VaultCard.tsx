@@ -76,6 +76,7 @@ export function VaultCard({ vault, selected, onSelect }: Props) {
     >
       <div className="vault-card-topline">
         <div className="pill-row">
+          <span className="pill experimental-pill">Experimental</span>
           <span className="pill accent-pill">{vault.opportunityLabel}</span>
           <span className="pill muted-pill">{vault.status}</span>
           {vault.range ? <span className="pill muted-pill">{vault.range} range</span> : null}
