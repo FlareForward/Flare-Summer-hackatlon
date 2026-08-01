@@ -548,6 +548,107 @@ pre {
   justify-self: end;
 }
 
+.spectra-trade-panel.simplified {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.spectra-simple-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.spectra-simple-header h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 650;
+}
+
+.spectra-simple-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.spectra-market-mini {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.spectra-market-mini span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted-strong);
+  padding: 7px 9px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.spectra-order-box.simple {
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  align-items: center;
+  padding: 10px;
+}
+
+.spectra-quote-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.spectra-quote-summary > div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 11px;
+}
+
+.spectra-quote-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.spectra-quote-summary strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.spectra-quote-summary .danger strong {
+  color: var(--red);
+}
+
+.spectra-limit-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.spectra-limit-line span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 8px;
+}
+
+.spectra-advanced.compact summary {
+  min-height: 32px;
+  padding: 7px 10px;
+}
+
 .vault-card h3 {
   font-size: 17px;
 }
