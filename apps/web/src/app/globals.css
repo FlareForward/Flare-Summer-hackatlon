@@ -592,9 +592,13 @@ pre {
 }
 
 .spectra-order-box.simple {
-  grid-template-columns: auto minmax(220px, 1fr) auto;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
   align-items: center;
   padding: 10px;
+}
+
+.spectra-action-button {
+  min-width: 118px;
 }
 
 .spectra-quote-summary {

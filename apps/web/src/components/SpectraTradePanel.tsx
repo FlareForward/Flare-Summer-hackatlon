@@ -214,6 +214,7 @@ export function SpectraTradePanel({ market }: Props) {
     : 0;
   const exceedsUsage = selectedUsageBps > MAX_SPECTRA_POOL_USAGE_BPS;
   const exceedsImpact = Boolean(quote && quote.priceImpactBps > MAX_SPECTRA_PRICE_IMPACT_BPS);
+  const tradeBlocked = busy || !quote || exceedsImpact || exceedsUsage || !poolState?.coinsVerified;
 
   return (
     <section className="panel spectra-trade-panel simplified">
@@ -246,7 +247,15 @@ export function SpectraTradePanel({ market }: Props) {
           }}
           disabled={!activeSuggestion || busy}
         >
-          Use suggested
+          Max safe
+        </button>
+        <button
+          type="button"
+          className="spectra-action-button"
+          disabled={tradeBlocked}
+          onClick={() => setStatus(side === 'buy' ? 'Ready: approve stXRP, then buy PT.' : 'Ready: approve PT, then sell for stXRP.')}
+        >
+          {side === 'buy' ? 'Buy PT' : 'Sell PT'}
         </button>
       </div>
 
