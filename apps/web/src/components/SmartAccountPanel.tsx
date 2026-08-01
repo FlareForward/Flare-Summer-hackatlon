@@ -1161,7 +1161,7 @@ export function SmartAccountPanel({ vault }: Props) {
       <p className="behind-the-click">
         {vault.kind === 'carry'
           ? "Behind this one signature, the vault can borrow, swap, and manage an LP position across several Flare protocols. You don't need to understand lending, borrowing, swaps, or rebalancing to use it."
-          : "Behind this one signature, your FXRP is deposited straight into the FXRP/USDT0 LP leaf. No borrowing, no leverage — just the pool position."}
+          : "Behind this one signature, your FXRP is deposited straight into the FXRP/USDT0 pool. No borrowing, no leverage."}
       </p>
 
       <div className="step-list">

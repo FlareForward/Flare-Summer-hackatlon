@@ -1,7 +1,7 @@
 const PROTOCOLS = [
-  { title: 'Turns your XRP into Flare money', sub: 'FAssets' },
+  { title: 'Makes your XRP programmable', sub: 'FAssets' },
   { title: 'Lets your XRP wallet stay in control', sub: 'Smart Accounts' },
-  { title: 'Finds a better rate for your money', sub: 'Lending & borrowing' },
+  { title: 'Manages the debt', sub: 'Lending & borrowing' },
   { title: 'Keeps your position balanced', sub: 'DEX & LP ranges' },
 ];
 

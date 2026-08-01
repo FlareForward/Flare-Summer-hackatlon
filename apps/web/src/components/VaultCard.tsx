@@ -42,7 +42,7 @@ export function VaultCard({ vault, selected, onSelect }: Props) {
     : opportunity.idleUsdt0 && opportunity.idleUsdt0 > BigInt(0) ? 'Borrow window' : 'Seeded';
   const lpStatusDetail = opportunity.leafValue == null
     ? vault.readinessNote ?? vault.exit
-    : `${formatToken(opportunity.leafValue, vault.assetDecimals, vault.asset)} in LP leaf`;
+    : `${formatToken(opportunity.leafValue, vault.assetDecimals, vault.asset)} in the LP position`;
   const lpRangeDisplay = vault.lpRangeLowerPrice && vault.lpRangeUpperPrice
     ? `$${vault.lpRangeLowerPrice} - $${vault.lpRangeUpperPrice}`
     : vault.range ? `${vault.range} range` : '-';
@@ -134,7 +134,7 @@ export function VaultCard({ vault, selected, onSelect }: Props) {
                   <em>USDT0 / FXRP</em>
                 </div>
                 <div>
-                  <span>LP leaf value</span>
+                  <span>LP position value</span>
                   <strong>{opportunity.leafValue == null ? '-' : formatToken(opportunity.leafValue, vault.assetDecimals, vault.asset)}</strong>
                 </div>
                 <div>
@@ -158,7 +158,7 @@ export function VaultCard({ vault, selected, onSelect }: Props) {
               <div>
                 <span>Range</span>
                 <strong>{lpRangeDisplay}</strong>
-                <em>FXRP / USDT0 leaf</em>
+                <em>FXRP / USDT0 pool</em>
               </div>
               <div>
                 <span>Deposit asset</span>

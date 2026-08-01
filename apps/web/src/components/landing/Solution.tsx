@@ -1,7 +1,7 @@
 const STEPS = [
   { mark: '1', title: 'Watches the market', body: 'Checks prices and conditions around the clock, not just when you remember to look.' },
   { mark: '2', title: 'Follows fixed rules', body: 'The same rules decide when to act — no panic, no guessing, no bad days.' },
-  { mark: '3', title: 'Moves your money', body: 'Shifts your position back into its earning zone automatically when it needs to.' },
+  { mark: '3', title: 'Manages the position', body: 'Shifts your position back into its earning zone automatically when it needs to.' },
 ];
 
 export function Solution() {
@@ -25,7 +25,7 @@ export function Solution() {
 
         <div className="landing-kicker">
           <p className="landing-eyebrow">How this fixes it</p>
-          <h2>We taught the computer to make the calls.</h2>
+          <h2>The data makes the rules.</h2>
           <p className="landing-lede">
             Instead of you watching charts all day, a set of rules does it for you &mdash; deciding when to move
             your money and how much risk to take. Same rules, every time, so the strategy is easy to trust and

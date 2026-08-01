@@ -18,7 +18,7 @@ export function Problem() {
       <div className="landing-section-inner landing-split">
         <div className="landing-kicker">
           <p className="landing-eyebrow">The problem</p>
-          <h2>Earning yield shouldn&rsquo;t feel like a part-time job.</h2>
+          <h2>Earning yield shouldn&rsquo;t feel like a full-time job.</h2>
           <p className="landing-lede">
             If you&rsquo;ve tried to make crypto grow, you know the drill: check the price, wonder if you should
             move your money, worry you waited too long, do it all again tomorrow. It&rsquo;s exhausting &mdash;
