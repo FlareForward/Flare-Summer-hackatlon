@@ -6,7 +6,7 @@ import { SmartAccountPanel } from '@/components/SmartAccountPanel';
 import { VaultCard } from '@/components/VaultCard';
 import { VAULTS } from '@/config/vaults';
 
-const DEFAULT_VAULT_ID = 'carry-lp-fxrp-usdt0';
+const DEFAULT_VAULT_ID = 'lp-fxrp-usdt0';
 
 function vaultById(id: string | null) {
   return VAULTS.find((vault) => vault.id === id) ?? null;
@@ -35,7 +35,7 @@ export default function AppPage() {
         <section className="hero">
           <div>
             <p className="eyebrow">Smart Account Vaults</p>
-            <h2>Deploy XRP into Flare strategies from one console.</h2>
+            <h2>LP made easy &mdash; with leverage, or without.</h2>
           </div>
           <div className="hero-stats">
             <div>

@@ -19,7 +19,7 @@ export function Start() {
               rel="noreferrer"
               aria-label="Visit Xaman"
             >
-              <img src="/images/xaman.avif" alt="" width={20} height={20} />
+              <img src="/images/xaman.avif" alt="" width={24} height={24} />
             </a>
             Xaman
           </span>
@@ -31,9 +31,22 @@ export function Start() {
               rel="noreferrer"
               aria-label="Visit D'CENT Wallet"
             >
-              <img src="/images/dcent.svg" alt="" width={44} height={13} />
+              <img src="/images/dcent.svg" alt="" width={40} height={12} />
             </a>
             D&rsquo;CENT
+          </span>
+          <span className="landing-wallet-chip">
+            <a
+              className="landing-wallet-logo"
+              href="https://bifrostwallet.com/"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Visit Bifrost Wallet"
+            >
+              {/* White-only wordmark: inverted so it reads on the light logo tile. */}
+              <img className="invert-mark" src="/images/bifrost.png" alt="" width={40} height={8} />
+            </a>
+            Bifrost
           </span>
         </div>
         <div className="landing-start-cta">

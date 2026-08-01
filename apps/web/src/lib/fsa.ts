@@ -1,5 +1,5 @@
 import { encodeAbiParameters, encodeFunctionData, keccak256, parseUnits, zeroAddress, type Address, type Hex } from 'viem';
-import { assetManagerAbi, carryVaultAbi, erc20Abi, erc4626VaultAbi, personalAccountAbi, swapRouterAbi } from '@/config/abis';
+import { assetManagerAbi, carryVaultAbi, concentratedLpVaultAbi, erc20Abi, erc4626VaultAbi, personalAccountAbi, swapRouterAbi } from '@/config/abis';
 import { ASSET_MANAGER_FXRP, FXRP_ADDRESS, FXRP_USDT0_SWAP_ROUTER, USDT0_ADDRESS, type VaultConfig } from '@/config/vaults';
 
 export type FsaCall = {
@@ -86,15 +86,31 @@ export function buildDepositCalls(vault: VaultConfig, amount: string, personalAc
   return [buildApproveAssetCall(vault), buildDepositOnlyCall(vault, assets, personalAccount)];
 }
 /**
- * Withdrawal is wired for carry-style FXRP vaults: `requestWithdrawal(shares)` is a single
- * atomic call that burns shares and pays FXRP straight to the caller (the PersonalAccount).
- * ERC-4626 LP vaults still redeem in-kind and are intentionally not supported here.
+ * Carry-style FXRP vaults: `requestWithdrawal(shares)` is a single atomic call that burns shares
+ * and pays FXRP straight to the caller (the PersonalAccount).
+ * Direct-entry LP vaults (erc4626 depositMode): `redeemInKind(shares, receiver, owner)` is the
+ * correct general exit — while the LP position is active it can return both FXRP and USDT0,
+ * unlike a standard ERC-4626 redeem().
  */
-export function buildWithdrawCalls(vault: VaultConfig, shares: string): FsaCall[] {
-  if (vault.depositMode !== 'erc20-vault') {
-    throw new Error('Withdrawals are only wired up for carry-style FXRP vaults right now.');
-  }
+export function buildWithdrawCalls(vault: VaultConfig, shares: string, personalAccount: Address): FsaCall[] {
   const shareAmount = parseUnits(shares || '0', vault.shareDecimals);
+
+  if (vault.depositMode === 'erc4626') {
+    const redeem = encodeFunctionData({
+      abi: concentratedLpVaultAbi,
+      functionName: 'redeemInKind',
+      args: [shareAmount, personalAccount, personalAccount],
+    });
+
+    return [
+      {
+        target: vault.address,
+        value: BigInt(0),
+        data: redeem,
+        label: `Redeem ${vault.name} shares for FXRP + USDT0`,
+      },
+    ];
+  }
 
   const withdraw = encodeFunctionData({
     abi: carryVaultAbi,

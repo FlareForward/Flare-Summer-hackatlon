@@ -539,20 +539,26 @@
   font-size: 14.5px;
 }
 
+/* Landscape tile: these are mostly wide wordmarks, so width is the binding dimension. */
 .landing-wallet-logo {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 52px;
+  height: 36px;
+  border-radius: 10px;
   background: #f4f0fc;
 }
 
 .landing-wallet-logo img {
   display: block;
-  max-width: 22px;
-  max-height: 16px;
+  max-width: 40px;
+  max-height: 24px;
   object-fit: contain;
+}
+
+/* Pure-white wordmarks would vanish on the light logo tile; invert to read as black. */
+.landing-wallet-logo img.invert-mark {
+  filter: invert(1);
 }
 
 .landing-start-cta { margin-top: 30px; }

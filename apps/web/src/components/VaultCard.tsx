@@ -29,6 +29,7 @@ function isLpCarryVault(vault: VaultConfig): boolean {
 export function VaultCard({ vault, selected, onSelect }: Props) {
   const opportunity = useLiveVaultOpportunity(vault);
   const lpCarry = isLpCarryVault(vault);
+  const directLp = vault.kind === 'lp';
   const tvlDisplay = opportunity.totalAssets == null ? '-' : formatToken(opportunity.totalAssets, vault.assetDecimals, vault.asset);
   const tvlUsdDisplay = formatUsd(opportunity.collateralValue);
   const debtAmount = opportunity.debt == null ? '-' : formatToken(opportunity.debt, 6, 'USDT0');
@@ -147,6 +148,24 @@ export function VaultCard({ vault, selected, onSelect }: Props) {
                 </div>
               </div>
             </>
+          ) : directLp ? (
+            <div className="vault-snapshot" aria-label={`${vault.name} metrics`}>
+              <div>
+                <span>TVL</span>
+                <strong>{tvlDisplay}</strong>
+                <em>No borrowing, no leverage</em>
+              </div>
+              <div>
+                <span>Range</span>
+                <strong>{lpRangeDisplay}</strong>
+                <em>FXRP / USDT0 leaf</em>
+              </div>
+              <div>
+                <span>Deposit asset</span>
+                <strong>{vault.asset}</strong>
+                <em>Withdraw as FXRP + USDT0</em>
+              </div>
+            </div>
           ) : (
             <div className="vault-snapshot" aria-label={`${vault.name} metrics`}>
               <div>

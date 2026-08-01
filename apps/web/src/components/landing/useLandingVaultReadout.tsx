@@ -5,12 +5,13 @@ import { VAULTS } from '@/config/vaults';
 import { formatToken } from '@/lib/format';
 import { useLiveVaultOpportunity } from '@/lib/useLiveVaultOpportunity';
 
-const CARRY_VAULT = VAULTS.find((vault) => vault.id === 'fxrp-carry')!;
 const LP_CARRY_VAULT = VAULTS.find((vault) => vault.id === 'carry-lp-fxrp-usdt0')!;
 
 function useResolvedLandingVaultReadout() {
-  // Use the same resolver as VaultCard so landing metrics cannot drift from the card.
-  const opportunity = useLiveVaultOpportunity(CARRY_VAULT);
+  // Use the same resolver as VaultCard so landing metrics cannot drift from the card. The LP
+  // Carry vault is the only remaining leveraged vault, so it supplies both the live APR/LTV/debt
+  // reads and the LP range it opened — those numbers describe the same contract.
+  const opportunity = useLiveVaultOpportunity(LP_CARRY_VAULT);
   const lowerPrice = LP_CARRY_VAULT.lpRangeLowerPrice ? Number(LP_CARRY_VAULT.lpRangeLowerPrice) : null;
   const upperPrice = LP_CARRY_VAULT.lpRangeUpperPrice ? Number(LP_CARRY_VAULT.lpRangeUpperPrice) : null;
   const rangeLabel = LP_CARRY_VAULT.lpRangeLowerPrice && LP_CARRY_VAULT.lpRangeUpperPrice

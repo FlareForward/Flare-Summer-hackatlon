@@ -1,0 +1,15 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+[nixpacks.phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[nixpacks.phases.build]
+cmds = ["npm ci", "npm run build"]

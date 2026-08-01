@@ -44,31 +44,41 @@ export const USDT0_ADDRESS = '0xe7cd86e13AC4309349F30B3435a9d337750fC82D' as con
 export const FXRP_USDT0_POOL = '0x927485d88a66253c63Af9163dca5f21c25A57393' as const;
 export const FXRP_USDT0_SWAP_ROUTER = '0x69D57B9D705eaD73a5d2f2476C30c55bD755cc2F' as const;
 
+// ConcentratedLpVault.sol — the FXRP/USDT0 10% LP leaf. This is a single deployed contract that
+// is enterable two ways: directly (plain deposit/redeemInKind, no leverage) or indirectly through
+// the FXRP/USDT0 LP Carry Vault below, which borrows against it. Same leaf, two entry points.
+export const FXRP_USDT0_LP_LEAF = '0xadb3f75c01eda514d476998f96523c1031dda25b' as const;
+
 export const VAULTS: VaultConfig[] = [
   {
-    id: 'fxrp-carry',
-    name: 'FXRP Carry Vault',
-    token: 'cvFXRP',
-    kind: 'carry',
-    depositMode: 'erc20-vault',
+    id: 'lp-fxrp-usdt0',
+    name: 'FXRP/USDT0 LP Vault',
+    token: 'lp-FXUS-N',
+    kind: 'lp',
+    depositMode: 'erc4626',
     asset: 'FXRP',
     assetDecimals: 6,
-    shareDecimals: 6,
+    shareDecimals: 18,
     assetAddress: FXRP_ADDRESS,
-    address: (process.env.NEXT_PUBLIC_CARRY_FXRP_VAULT || '0x8005380999F6024CBbAe0c82d616F6a801F437fB') as Address,
-    accent: '#F4BC62',
+    address: FXRP_USDT0_LP_LEAF,
+    accent: '#7C9EF2',
+    range: '10%',
+    leafLabel: 'FXRP/USDT0 10% LP leaf',
+    leafAddress: FXRP_USDT0_LP_LEAF,
+    lpRangeLowerPrice: '1.0618',
+    lpRangeUpperPrice: '1.1688',
     status: 'live',
     entryEnabled: true,
-    readinessNote: 'Ready for the Xaman Smart Account entry flow once operator fee and vault runtime state are confirmed.',
-    supportsCarryWithdrawals: true,
-    summary: 'A managed carry trade: your FXRP stays the entry asset while the vault borrows USDT0 and seeks yield automatically.',
-    opportunityApr: 'Est. 8-14%',
-    opportunityLabel: 'Carry spread',
-    opportunityReason: 'Designed to earn when USDT0 lending yield is higher than the borrow cost against FXRP collateral.',
-    riskLabel: 'Medium',
-    riskSummary: 'Uses borrowing, so returns depend on rates and keeper rebalancing. The vault targets conservative LTV.',
-    bestFor: 'Simple FXRP yield without choosing lending venues yourself.',
-    exit: 'Withdraw back to FXRP',
+    readinessNote: 'Live — deposit FXRP directly into the FXRP/USDT0 LP leaf. No borrowing involved.',
+    supportsCarryWithdrawals: false,
+    summary: 'Deposit FXRP straight into the FXRP/USDT0 LP leaf. No borrowing, no leverage — just the pool position.',
+    opportunityApr: 'LP fees only',
+    opportunityLabel: 'LP fees',
+    opportunityReason: 'Earns FXRP/USDT0 pool trading fees directly, without borrowing or leverage.',
+    riskLabel: 'Lower',
+    riskSummary: 'Only LP range and price movement risk — no borrowing, no liquidation risk.',
+    bestFor: 'Users who want the LP position without taking on leverage.',
+    exit: 'Withdraw as FXRP + USDT0 (redeemInKind)',
   },
   {
     id: 'carry-lp-fxrp-usdt0',
@@ -84,7 +94,7 @@ export const VAULTS: VaultConfig[] = [
     accent: '#3FB7A4',
     range: '10%',
     leafLabel: 'FXRP/USDT0 10% LP leaf',
-    leafAddress: '0xadb3f75c01eda514d476998f96523c1031dda25b',
+    leafAddress: FXRP_USDT0_LP_LEAF,
     targetLtvBps: 4000,
     lpRangeLowerPrice: '1.0618',
     lpRangeUpperPrice: '1.1688',

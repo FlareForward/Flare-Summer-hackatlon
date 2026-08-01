@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPublicClient, formatUnits, http, isAddress, parseUnits, type Address, type Hex } from 'viem';
+import QRCode from 'qrcode';
 import { flare } from '@/config/wagmi';
 import { algebraPoolAbi, assetManagerAbi, carryVaultAbi, erc20Abi, masterAccountControllerAbi } from '@/config/abis';
 import {
@@ -28,10 +29,11 @@ import {
   type FsaCall,
 } from '@/lib/fsa';
 import { signDcentInstructionPayment, useDcentXrplConnect } from '@/lib/dcent';
+import { signBifrostInstructionPayment, useBifrostConnect } from '@/lib/bifrostConnect';
 import { createXamanPayload, getXamanPayloadStatus, type XamanPayload, type XamanPayloadStatus } from '@/lib/xaman';
 import { useXamanConnect } from '@/lib/xamanConnect';
 import { formatToken, isZeroAddress, shortAddress } from '@/lib/format';
-import { useCarryVaultApr } from '@/lib/useCarryVaultApr';
+import { useLiveVaultOpportunity } from '@/lib/useLiveVaultOpportunity';
 
 type Props = {
   vault: VaultConfig;
@@ -92,9 +94,19 @@ export function SmartAccountPanel({ vault }: Props) {
   const [txDialogTitle, setTxDialogTitle] = useState('Transaction result');
   const [txDialogMessage, setTxDialogMessage] = useState('');
   const [txDialogItems, setTxDialogItems] = useState<TxDialogItem[]>([]);
+  const [bifrostQr, setBifrostQr] = useState<string | undefined>();
   const executionAttempts = useRef(0);
   const { account: xamanAccount, connecting: xamanConnecting, error: xamanConnectError, connect: connectXaman, disconnect: disconnectXaman } = useXamanConnect();
   const { account: dcentAccount, connecting: dcentConnecting, error: dcentError, connect: connectDcent, disconnect: disconnectDcent } = useDcentXrplConnect();
+  const {
+    account: bifrostAccount,
+    topic: bifrostTopic,
+    uri: bifrostUri,
+    connecting: bifrostConnecting,
+    error: bifrostError,
+    connect: connectBifrost,
+    disconnect: disconnectBifrost,
+  } = useBifrostConnect();
 
   function openTxDialog(title: string, message: string, items: TxDialogItem[]) {
     setTxDialogTitle(title);
@@ -119,11 +131,9 @@ export function SmartAccountPanel({ vault }: Props) {
     [],
   );
 
-  // Same live-APR read as the vault cards; only the FXRP Carry Vault has this on chain today.
-  const liveApr = useCarryVaultApr(vault.address, vault.kind === 'carry' && vault.status === 'live' && !isZeroAddress(vault.address), vault.leafAddress, vault.targetLtvBps);
-  const estimatedAprDisplay = liveApr.ltvAdjustedLeafAprPct != null
-    ? `${liveApr.ltvAdjustedLeafAprPct.toFixed(2)}%`
-    : liveApr.netAprPct != null ? `${liveApr.netAprPct.toFixed(2)}%` : vault.opportunityApr;
+  // Same live-data hook as the vault cards, so this panel's numbers can't drift from them.
+  const opportunity = useLiveVaultOpportunity(vault);
+  const estimatedAprDisplay = opportunity.display;
 
   async function refreshBalances(account = personalAccount) {
     if (!account || !isAddress(account)) return;
@@ -360,9 +370,93 @@ export function SmartAccountPanel({ vault }: Props) {
       setBusy(false);
     }
   }
+  async function signWithBifrost(reference: Hex, operator: string, account: string, topic: string) {
+    const txItemId = 'operator-payment-0';
+    openTxDialog('XRPL payment', 'Confirm the payment in Bifrost. The result will update here.', [
+      {
+        id: txItemId,
+        label: 'Submit vault instruction',
+        amountDrops: DEFAULT_FEE_DROPS,
+        destination: operator,
+        status: 'pending',
+      },
+    ]);
+    setStatus('Confirm the XRPL Payment in Bifrost to submit your vault instruction.');
+    try {
+      const result = await signBifrostInstructionPayment({
+        topic,
+        account,
+        destination: operator,
+        amountDrops: DEFAULT_FEE_DROPS,
+        memoHex: reference,
+      });
+      if (!result.txid) throw new Error('Wallet completed but did not return an XRPL transaction hash. Check Bifrost activity before trying again.');
+      updateTxDialogItem(txItemId, { status: 'signed', txid: result.txid });
+      setTxDialogMessage('XRPL transaction submitted. Waiting for the Smart Account balances to update on Flare.');
+      setBaseline({ fxrp: fxrpBalance, shares: shareBalance, usdt0: usdt0Balance });
+      executionAttempts.current = 0;
+      setExecuting(true);
+      setStatus(`Signed in Bifrost (${shortAddress(result.txid)}). Waiting for execution on Flare...`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bifrost signing failed.';
+      updateTxDialogItem(txItemId, { status: 'failed', error: message });
+      setTxDialogMessage('The wallet did not return a submitted XRPL transaction. No Flare execution can start until an XRPL hash exists.');
+      setStatus(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signDirectMintWithBifrost(payments: DirectMintPayment[], destination: string, account: string, topic: string) {
+    const signedTxids: string[] = [];
+    let currentPaymentId = '';
+    openTxDialog('Direct-mint XRPL payment', 'Confirm each Bifrost payment. Submitted hashes and failures will update here.', payments.map((payment, index) => ({
+      id: `direct-mint-${index}`,
+      label: payment.label,
+      amountDrops: payment.paymentDrops,
+      destination,
+      status: 'pending' as const,
+    })));
+    try {
+      for (let i = 0; i < payments.length; i += 1) {
+        const payment = payments[i];
+        currentPaymentId = `direct-mint-${i}`;
+        setStatus(`Confirm Bifrost payment ${i + 1} of ${payments.length}: ${formatUnits(BigInt(payment.paymentDrops), 6)} XRP for ${payment.label}.`);
+        const result = await signBifrostInstructionPayment({
+          topic,
+          account,
+          destination,
+          amountDrops: payment.paymentDrops,
+          memoHex: payment.memo,
+        });
+        if (!result.txid) throw new Error('Wallet completed but did not return an XRPL transaction hash. Check Bifrost activity before trying again.');
+        signedTxids.push(result.txid);
+        updateTxDialogItem(currentPaymentId, { status: 'signed', txid: result.txid });
+      }
+      setBaseline({ fxrp: fxrpBalance, shares: shareBalance, usdt0: usdt0Balance });
+      executionAttempts.current = 0;
+      setExecuting(true);
+      const txSummary = signedTxids.length > 0 ? ` (${signedTxids.map(shortAddress).join(', ')})` : '';
+      setTxDialogMessage('XRPL payment submitted. Waiting for Smart Account balances to update on Flare.');
+      setStatus(`Signed ${payments.length} direct-mint payment${payments.length > 1 ? 's' : ''} in Bifrost${txSummary}. Waiting for execution on Flare...`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bifrost direct-mint signing failed.';
+      const partial = signedTxids.length > 0 ? ' One payment was already submitted; refresh balances before trying again.' : '';
+      if (currentPaymentId) updateTxDialogItem(currentPaymentId, { status: 'failed', error: message });
+      setTxDialogMessage(`${message}${partial}`);
+      setStatus(`${message}${partial}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitPreparedInstruction(reference: Hex, operator: string) {
     if (dcentAccount) {
       await signWithDcent(reference, operator, dcentAccount);
+      return;
+    }
+    if (bifrostAccount && bifrostTopic) {
+      await signWithBifrost(reference, operator, bifrostAccount, bifrostTopic);
       return;
     }
     await createXamanPayment(reference, operator);
@@ -459,6 +553,10 @@ export function SmartAccountPanel({ vault }: Props) {
     const { payments, coreVaultXrplAddress } = prepared;
     if (dcentAccount) {
       await signDirectMintWithDcent(payments, coreVaultXrplAddress, dcentAccount);
+      return;
+    }
+    if (bifrostAccount && bifrostTopic) {
+      await signDirectMintWithBifrost(payments, coreVaultXrplAddress, bifrostAccount, bifrostTopic);
       return;
     }
     if (payments.length > 1) {
@@ -750,6 +848,10 @@ export function SmartAccountPanel({ vault }: Props) {
       await signDirectMintWithDcent(payments, coreVaultXrplAddress, dcentAccount);
       return;
     }
+    if (bifrostAccount && bifrostTopic) {
+      await signDirectMintWithBifrost(payments, coreVaultXrplAddress, bifrostAccount, bifrostTopic);
+      return;
+    }
     if (payments.length > 1) {
       await signDirectMintWithXaman(payments, coreVaultXrplAddress);
       return;
@@ -773,7 +875,7 @@ export function SmartAccountPanel({ vault }: Props) {
       return;
     }
     setBusy(true);
-    const prepared = await prepareMemoOnlyDirectMintInstruction(`withdraw ${withdrawShares} shares`, () => buildWithdrawCalls(vault, withdrawShares));
+    const prepared = await prepareMemoOnlyDirectMintInstruction(`withdraw ${withdrawShares} shares`, (account) => buildWithdrawCalls(vault, withdrawShares, account));
     await submitDirectMintInstruction(prepared);
   }
 
@@ -806,7 +908,7 @@ export function SmartAccountPanel({ vault }: Props) {
     const shareAmount = formatUnits(shareBalance, vault.shareDecimals);
     setWithdrawShares(shareAmount);
     setBusy(true);
-    const prepared = await prepareMemoOnlyDirectMintInstruction(`withdraw ${shareAmount} shares`, () => buildWithdrawCalls(vault, shareAmount));
+    const prepared = await prepareMemoOnlyDirectMintInstruction(`withdraw ${shareAmount} shares`, (account) => buildWithdrawCalls(vault, shareAmount, account));
     await submitDirectMintInstruction(prepared);
   }
 
@@ -934,6 +1036,30 @@ export function SmartAccountPanel({ vault }: Props) {
   }, [dcentAccount]);
 
   useEffect(() => {
+    if (!bifrostAccount) return;
+    resolveConnectedAccount(bifrostAccount, 'Bifrost');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bifrostAccount]);
+
+  useEffect(() => {
+    if (!bifrostUri) {
+      setBifrostQr(undefined);
+      return undefined;
+    }
+    let cancelled = false;
+    QRCode.toDataURL(bifrostUri, { margin: 1, width: 220 })
+      .then((dataUrl) => {
+        if (!cancelled) setBifrostQr(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setBifrostQr(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bifrostUri]);
+
+  useEffect(() => {
     if (!xamanPayload || xamanStatus?.resolved) return undefined;
     const interval = setInterval(async () => {
       try {
@@ -1033,27 +1159,41 @@ export function SmartAccountPanel({ vault }: Props) {
       </div>
 
       <p className="behind-the-click">
-        Behind this one signature, the vault can borrow, swap, and manage an LP position across several Flare
-        protocols. You don&apos;t need to understand lending, borrowing, swaps, or rebalancing to use it.
+        {vault.kind === 'carry'
+          ? "Behind this one signature, the vault can borrow, swap, and manage an LP position across several Flare protocols. You don't need to understand lending, borrowing, swaps, or rebalancing to use it."
+          : "Behind this one signature, your FXRP is deposited straight into the FXRP/USDT0 LP leaf. No borrowing, no leverage — just the pool position."}
       </p>
 
       <div className="step-list">
-        <div className={xamanAccount || dcentAccount ? 'flow-step done' : 'flow-step'}>
+        <div className={xamanAccount || dcentAccount || bifrostAccount ? 'flow-step done' : 'flow-step'}>
           <span>1</span>
           <div>
             <strong>Connect wallet</strong>
-            <p>{dcentAccount ? `D'CENT ${shortAddress(dcentAccount)}` : xamanAccount ? `Xaman ${shortAddress(xamanAccount)}` : 'Use your XRPL wallet. No FLR wallet needed.'}</p>
+            <p>
+              {dcentAccount
+                ? `D'CENT ${shortAddress(dcentAccount)}`
+                : bifrostAccount
+                  ? `Bifrost ${shortAddress(bifrostAccount)}`
+                  : xamanAccount
+                    ? `Xaman ${shortAddress(xamanAccount)}`
+                    : 'Use your XRPL wallet. No FLR wallet needed.'}
+            </p>
           </div>
           {dcentAccount ? (
             <button type="button" className="ghost-button" onClick={disconnectDcent}>Disconnect</button>
+          ) : bifrostAccount ? (
+            <button type="button" className="ghost-button" onClick={disconnectBifrost}>Disconnect</button>
           ) : xamanAccount ? (
             <button type="button" className="ghost-button" onClick={disconnectXaman}>Disconnect</button>
           ) : (
             <div className="wallet-actions">
-              <button type="button" onClick={connectDcent} disabled={dcentConnecting || xamanConnecting}>
+              <button type="button" onClick={connectDcent} disabled={dcentConnecting || xamanConnecting || bifrostConnecting}>
                 {dcentConnecting ? 'Waiting...' : "D'CENT"}
               </button>
-              <button type="button" className="ghost-button" onClick={connectXaman} disabled={xamanConnecting || dcentConnecting}>
+              <button type="button" className="ghost-button" onClick={connectBifrost} disabled={bifrostConnecting || dcentConnecting || xamanConnecting}>
+                {bifrostConnecting ? 'Waiting...' : 'Bifrost'}
+              </button>
+              <button type="button" className="ghost-button" onClick={connectXaman} disabled={xamanConnecting || dcentConnecting || bifrostConnecting}>
                 {xamanConnecting ? 'Waiting...' : 'Xaman'}
               </button>
             </div>
@@ -1084,7 +1224,7 @@ export function SmartAccountPanel({ vault }: Props) {
         </div>
       </div>
 
-      {!xamanAccount && !dcentAccount ? (
+      {!xamanAccount && !dcentAccount && !bifrostAccount ? (
         <label className="manual-address">
           Paste XRPL address instead
           <input
@@ -1096,6 +1236,7 @@ export function SmartAccountPanel({ vault }: Props) {
       ) : null}
 
       {dcentError ? <p className="status-line warning">{dcentError}</p> : null}
+      {bifrostError ? <p className="status-line warning">{bifrostError}</p> : null}
       {xamanConnectError ? <p className="status-line warning">{xamanConnectError}</p> : null}
       {status ? <p className="status-line">{status}</p> : null}
 
@@ -1147,6 +1288,18 @@ export function SmartAccountPanel({ vault }: Props) {
             ) : null}
           </div>
           {xamanPayload.qrPng ? <img src={xamanPayload.qrPng} alt="Xaman sign QR code" width={156} height={156} /> : null}
+        </div>
+      ) : null}
+      {bifrostUri && !bifrostAccount ? (
+        <div className="sign-box">
+          <div>
+            <h3>Scan with Bifrost</h3>
+            <p>Open Bifrost Wallet and scan this code, or open it directly on mobile.</p>
+            <a href={bifrostUri} target="_blank" rel="noreferrer" className="primary-link">
+              Open in Bifrost
+            </a>
+          </div>
+          {bifrostQr ? <img src={bifrostQr} alt="Bifrost connect QR code" width={156} height={156} /> : null}
         </div>
       ) : null}
 
@@ -1231,7 +1384,9 @@ export function SmartAccountPanel({ vault }: Props) {
               <p>Claim USDT0 surplus or swap it back into FXRP when available.</p>
             </div>
             <div className="button-row">
-              <button type="button" className="ghost-button" onClick={claimSurplus} disabled={busy || !vault.entryEnabled || !hasPendingSurplus}>{busy ? 'Preparing...' : 'Claim'}</button>
+              {vault.supportsCarryWithdrawals ? (
+                <button type="button" className="ghost-button" onClick={claimSurplus} disabled={busy || !vault.entryEnabled || !hasPendingSurplus}>{busy ? 'Preparing...' : 'Claim'}</button>
+              ) : null}
               <button type="button" className="ghost-button" onClick={swapUsdt0ToFxrp} disabled={busy || !vault.entryEnabled || !usdt0Balance}>{busy ? 'Preparing...' : 'Swap to FXRP'}</button>
             </div>
           </div>
@@ -1248,7 +1403,9 @@ export function SmartAccountPanel({ vault }: Props) {
             </label>
             <button type="button" onClick={refreshAllBalances}>Refresh balances</button>
             <button type="button" onClick={withdrawVault} disabled={busy || !vault.entryEnabled}>{busy ? 'Preparing...' : 'Withdraw'}</button>
-            <button type="button" onClick={claimSurplus} disabled={busy || !vault.entryEnabled || !hasPendingSurplus}>{busy ? 'Preparing...' : 'Claim surplus'}</button>
+            {vault.supportsCarryWithdrawals ? (
+              <button type="button" onClick={claimSurplus} disabled={busy || !vault.entryEnabled || !hasPendingSurplus}>{busy ? 'Preparing...' : 'Claim surplus'}</button>
+            ) : null}
             <button type="button" onClick={swapUsdt0ToFxrp} disabled={busy || !vault.entryEnabled || !usdt0Balance}>{busy ? 'Preparing...' : 'Swap surplus to FXRP'}</button>
           </div>
 
