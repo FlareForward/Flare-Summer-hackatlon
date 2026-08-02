@@ -1,8 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createPublicClient, formatUnits, http, parseUnits } from 'viem';
+import { createPublicClient, formatUnits, http, parseUnits, type Address, type Hex } from 'viem';
+import { assetManagerAbi, masterAccountControllerAbi, stakedXrpAbi } from '@/config/abis';
 import { flare } from '@/config/wagmi';
+import { ASSET_MANAGER_FXRP, MASTER_ACCOUNT_CONTROLLER } from '@/config/vaults';
+import { buildHashCommittedUserOp, buildMemoFieldUserOp, computeDirectMintingPaymentDrops } from '@/lib/fsa';
+import { createXamanPayload, type XamanPayload } from '@/lib/xaman';
+import { useXamanConnect } from '@/lib/xamanConnect';
+import { buildSpectraDirectMintBuyCalls } from '@/lib/spectra/calls';
 import type { SpectraMarket } from '@/lib/spectra/markets';
 import {
   DEFAULT_SPECTRA_SLIPPAGE_BPS,
@@ -32,6 +38,8 @@ type ReferencePrices = {
   sell: number;
 };
 
+type BuyInputAsset = 'xrp' | 'fxrp';
+
 function formatAmount(value?: bigint, decimals = 18, symbol = '') {
   if (value == null) return '-';
   const [whole, fraction = ''] = formatUnits(value, decimals).split('.');
@@ -51,8 +59,8 @@ function formatPrice(value?: number) {
   return value && value > 0 ? value.toFixed(6) : '-';
 }
 
-function tokenLabel(side: SpectraTradeSide, market: SpectraMarket) {
-  return side === 'buy' ? 'stXRP' : 'PT';
+function tokenLabel(side: SpectraTradeSide, inputAsset: BuyInputAsset) {
+  return side === 'buy' ? inputAsset.toUpperCase() : 'PT';
 }
 
 function receiveLabel(side: SpectraTradeSide) {
@@ -82,14 +90,18 @@ function maturityLabel(maturityTs: number) {
 
 export function SpectraTradePanel({ market }: Props) {
   const [side, setSide] = useState<SpectraTradeSide>('buy');
+  const [buyInputAsset, setBuyInputAsset] = useState<BuyInputAsset>('xrp');
   const [amount, setAmount] = useState('');
   const [slippageBps, setSlippageBps] = useState(DEFAULT_SPECTRA_SLIPPAGE_BPS);
   const [poolState, setPoolState] = useState<SpectraPoolState | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestions>({ buy: null, sell: null });
   const [referencePrices, setReferencePrices] = useState<ReferencePrices>({ buy: 0, sell: 0 });
   const [quote, setQuote] = useState<SpectraQuote | null>(null);
+  const [quoteFxrpIn, setQuoteFxrpIn] = useState<bigint | null>(null);
+  const [xamanPayload, setXamanPayload] = useState<XamanPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const { account: xamanAccount, connecting: xamanConnecting, error: xamanError, connect: connectXaman, disconnect: disconnectXaman } = useXamanConnect();
 
   const publicClient = useMemo(
     () =>
@@ -154,22 +166,31 @@ export function SpectraTradePanel({ market }: Props) {
       setSuggestions(nextSuggestions);
 
       const typedAmount = nextAmount.trim();
-      const fallback = nextSuggestions[nextSide]?.amountIn;
-      const amountIn = typedAmount ? parseUnits(typedAmount, market.decimals) : fallback;
-      if (amountIn && amountIn > BigInt(0)) {
-        const expectedOut = await quoteSpectraPool(publicClient, market, nextSide, amountIn);
+      const typedAmountIn = typedAmount ? parseUnits(typedAmount, market.decimals) : undefined;
+      if (typedAmountIn && typedAmountIn > BigInt(0)) {
+        const amountIn = nextSide === 'buy'
+          ? await publicClient.readContract({
+              address: market.ibt,
+              abi: stakedXrpAbi,
+              functionName: 'previewDeposit',
+              args: [typedAmountIn],
+            })
+          : typedAmountIn;
+        const conservativeAmountIn = nextSide === 'buy' ? (amountIn * BigInt(9_995)) / BigInt(10_000) : amountIn;
+        const expectedOut = await quoteSpectraPool(publicClient, market, nextSide, conservativeAmountIn);
         const nextQuote = buildSpectraQuote({
           side: nextSide,
-          amountIn,
+          amountIn: conservativeAmountIn,
           expectedOut,
           decimals: market.decimals,
           referencePrice: nextReferencePrices[nextSide],
           slippageBps,
         });
         setQuote(nextQuote);
-        if (!typedAmount && fallback) setAmount(formatUnits(fallback, market.decimals));
+        setQuoteFxrpIn(nextSide === 'buy' ? typedAmountIn : null);
       } else {
         setQuote(null);
+        setQuoteFxrpIn(null);
       }
       setStatus('');
     } catch (error) {
@@ -179,6 +200,106 @@ export function SpectraTradePanel({ market }: Props) {
       setBusy(false);
     }
   }, [amount, market, publicClient, side, slippageBps]);
+
+  async function submitHashCommittedDirectMint(args: {
+    memo: Hex;
+    packedUserOperation: Hex;
+    userOpHash: Hex;
+    sender: Address;
+    nonce: bigint;
+    destination: string;
+    amountDrops: string;
+  }) {
+    const executorUrl = process.env.NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL;
+    if (!executorUrl) throw new Error('Hash-committed Spectra buys require NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL.');
+    const response = await fetch(executorUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'directMintUserOp',
+        memo: args.memo,
+        packedUserOperation: args.packedUserOperation,
+        userOpHash: args.userOpHash,
+        sender: args.sender,
+        nonce: args.nonce.toString(),
+        destination: args.destination,
+        amountDrops: args.amountDrops,
+        vault: market?.pool,
+      }),
+    });
+    if (!response.ok) throw new Error(await response.text().catch(() => 'Executor did not accept the committed UserOp.'));
+  }
+
+  async function buyPtWithXaman() {
+    if (!market || !quote || !quoteFxrpIn) return;
+    if (!xamanAccount) {
+      await connectXaman();
+      return;
+    }
+    setBusy(true);
+    setStatus('Preparing XRP mint, stXRP stake, and PT buy...');
+    try {
+      const personalAccount = await publicClient.readContract({
+        address: MASTER_ACCOUNT_CONTROLLER,
+        abi: masterAccountControllerAbi,
+        functionName: 'getPersonalAccount',
+        args: [xamanAccount],
+      });
+      const [nonce, coreVaultXrplAddress, executorFeeDrops, feeBips, minimumFeeDrops] = await Promise.all([
+        publicClient.readContract({
+          address: MASTER_ACCOUNT_CONTROLLER,
+          abi: masterAccountControllerAbi,
+          functionName: 'getNonce',
+          args: [personalAccount],
+        }),
+        publicClient.readContract({ address: ASSET_MANAGER_FXRP, abi: assetManagerAbi, functionName: 'directMintingPaymentAddress', args: [] }),
+        publicClient.readContract({ address: ASSET_MANAGER_FXRP, abi: assetManagerAbi, functionName: 'getDirectMintingExecutorFeeUBA', args: [] }),
+        publicClient.readContract({ address: ASSET_MANAGER_FXRP, abi: assetManagerAbi, functionName: 'getDirectMintingFeeBIPS', args: [] }),
+        publicClient.readContract({ address: ASSET_MANAGER_FXRP, abi: assetManagerAbi, functionName: 'getDirectMintingMinimumFeeUBA', args: [] }),
+      ]);
+
+      const calls = buildSpectraDirectMintBuyCalls({
+        market,
+        fxrpAmount: quoteFxrpIn,
+        stXrpAmount: quote.amountIn,
+        minimumPtReceived: quote.minimumReceived,
+        personalAccount,
+      });
+      const paymentDrops = computeDirectMintingPaymentDrops({
+        netMintDrops: buyInputAsset === 'xrp' ? quoteFxrpIn : BigInt(0),
+        feeBips,
+        minimumFeeDrops,
+        executorFeeDrops,
+      }).toString();
+
+      let memo = buildMemoFieldUserOp({ calls, sender: personalAccount, nonce });
+      if (memo.length - 2 > 2048) {
+        const committed = buildHashCommittedUserOp({ calls, sender: personalAccount, nonce });
+        await submitHashCommittedDirectMint({
+          memo: committed.memo,
+          packedUserOperation: committed.packedUserOperation,
+          userOpHash: committed.userOpHash,
+          sender: personalAccount,
+          nonce,
+          destination: coreVaultXrplAddress,
+          amountDrops: paymentDrops,
+        });
+        memo = committed.memo;
+      }
+
+      const payload = await createXamanPayload(coreVaultXrplAddress, paymentDrops, memo);
+      setXamanPayload(payload);
+      setStatus(
+        buyInputAsset === 'xrp'
+          ? `Open Xaman to mint ${formatUnits(quoteFxrpIn, 6)} FXRP, stake to stXRP, and buy PT.`
+          : `Open Xaman to stake ${formatUnits(quoteFxrpIn, 6)} FXRP to stXRP and buy PT.`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to prepare PT buy.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     setPoolState(null);
@@ -214,7 +335,10 @@ export function SpectraTradePanel({ market }: Props) {
     : 0;
   const exceedsUsage = selectedUsageBps > MAX_SPECTRA_POOL_USAGE_BPS;
   const exceedsImpact = Boolean(quote && quote.priceImpactBps > MAX_SPECTRA_PRICE_IMPACT_BPS);
-  const tradeBlocked = busy || !quote || exceedsImpact || exceedsUsage || !poolState?.coinsVerified;
+  const tradeBlocked = busy || !quote || exceedsImpact || exceedsUsage || !poolState?.coinsVerified || side !== 'buy';
+  const maxSafeLabel = activeSuggestion
+    ? formatAmount(activeSuggestion.amountIn, market.decimals, side === 'buy' ? 'stXRP after conversion' : 'PT')
+    : '-';
 
   return (
     <section className="panel spectra-trade-panel simplified">
@@ -237,26 +361,28 @@ export function SpectraTradePanel({ market }: Props) {
         </div>
         <label className="amount-control spectra-amount">
           <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" aria-label="Spectra trade amount" />
-          <span>{tokenLabel(side, market)}</span>
+          <span>{tokenLabel(side, buyInputAsset)}</span>
         </label>
-        <button
-          type="button"
-          className="ghost-button compact-button"
-          onClick={() => {
-            if (activeSuggestion) setAmount(formatUnits(activeSuggestion.amountIn, market.decimals));
-          }}
-          disabled={!activeSuggestion || busy}
-        >
-          Max safe
-        </button>
+        {side === 'buy' ? (
+          <div className="trade-side-tabs input-token-tabs" role="tablist" aria-label="Buy input asset">
+            <button type="button" className={buyInputAsset === 'xrp' ? 'active' : ''} onClick={() => setBuyInputAsset('xrp')}>XRP</button>
+            <button type="button" className={buyInputAsset === 'fxrp' ? 'active' : ''} onClick={() => setBuyInputAsset('fxrp')}>FXRP</button>
+          </div>
+        ) : null}
         <button
           type="button"
           className="spectra-action-button"
           disabled={tradeBlocked}
-          onClick={() => setStatus(side === 'buy' ? 'Ready: approve stXRP, then buy PT.' : 'Ready: approve PT, then sell for stXRP.')}
+          onClick={buyPtWithXaman}
         >
-          {side === 'buy' ? 'Buy PT' : 'Sell PT'}
+          {side === 'sell' ? 'Sell later' : xamanAccount ? 'Buy PT' : 'Connect Xaman'}
         </button>
+      </div>
+
+      <div className="spectra-capacity-line">
+        <span>Max safe {side}: {maxSafeLabel}</span>
+        <span>{side === 'buy' ? `${buyInputAsset.toUpperCase()} converts to stXRP before PT purchase.` : 'Sell returns stXRP.'}</span>
+        <span>This is a liquidity limit, not a default trade size.</span>
       </div>
 
       <div className="spectra-quote-summary">
@@ -294,7 +420,19 @@ export function SpectraTradePanel({ market }: Props) {
 
       {exceedsImpact ? <p className="status-line warning">Reduce size. Price impact must stay at or below 50 bps.</p> : null}
       {exceedsUsage ? <p className="status-line warning">Reduce size. Pool usage must stay at or below 1%.</p> : null}
+      {xamanError ? <p className="status-line warning">{xamanError}</p> : null}
       {status ? <p className="status-line">{status}</p> : null}
+      {xamanAccount ? <p className="status-line">Xaman connected: {xamanAccount}</p> : null}
+      {xamanPayload ? (
+        <div className="sign-box spectra-sign-box">
+          <div>
+            <h3>Sign in Xaman</h3>
+            <p>{buyInputAsset === 'xrp' ? 'Approve the XRP payment. The memo instructs the Smart Account to mint FXRP, stake stXRP, and buy PT.' : 'Approve the XRPL instruction payment. The memo instructs the Smart Account to stake FXRP and buy PT.'}</p>
+            {xamanPayload.deeplink ? <a href={xamanPayload.deeplink} target="_blank" rel="noreferrer" className="primary-link">Open in Xaman</a> : null}
+          </div>
+          {xamanPayload.qrPng ? <img src={xamanPayload.qrPng} alt="Xaman sign QR code" width={132} height={132} /> : null}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -68,6 +68,26 @@ export const spectraPoolAbi = [
   },
 ] as const;
 
+export const stakedXrpAbi = [
+  {
+    type: 'function',
+    name: 'previewDeposit',
+    stateMutability: 'view',
+    inputs: [{ name: 'assets', type: 'uint256' }],
+    outputs: [{ name: 'shares', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'deposit',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'assets', type: 'uint256' },
+      { name: 'receiver', type: 'address' },
+    ],
+    outputs: [{ name: 'shares', type: 'uint256' }],
+  },
+] as const;
+
 const customCallComponents = [
   { name: 'targetContract', type: 'address' },
   { name: 'value', type: 'uint256' },

@@ -597,8 +597,27 @@ pre {
   padding: 10px;
 }
 
+.input-token-tabs button {
+  min-width: 54px;
+}
+
 .spectra-action-button {
   min-width: 118px;
+}
+
+.spectra-capacity-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.spectra-capacity-line span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 6px 8px;
 }
 
 .spectra-quote-summary {
