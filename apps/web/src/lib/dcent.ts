@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Hex } from 'viem';
+import { clearXrplWalletState, readXrplWalletState, writeXrplWalletState } from '@/lib/xrplWalletState';
 
 export type DcentWalletInfo = {
   name?: string;
@@ -38,10 +39,20 @@ export function getDcentXrplProvider() {
 }
 
 export function useDcentXrplConnect() {
-  const [account, setAccount] = useState<string | undefined>();
+  const [account, setAccount] = useState<string | undefined>(readXrplWalletState('dcent').account);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [walletInfo, setWalletInfo] = useState<DcentWalletInfo | undefined>();
+
+  useEffect(() => {
+    function onWalletEvent(event: Event) {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.wallet !== 'dcent') return;
+      setAccount(detail.state?.account);
+    }
+    window.addEventListener('flare:xrpl-wallet', onWalletEvent);
+    return () => window.removeEventListener('flare:xrpl-wallet', onWalletEvent);
+  }, []);
 
   async function connect() {
     const provider = getDcentXrplProvider();
@@ -64,6 +75,7 @@ export function useDcentXrplConnect() {
       const nextAccount = accounts[0];
       if (!nextAccount) throw new Error('D\'CENT did not return an XRPL account.');
       setAccount(nextAccount);
+      writeXrplWalletState('dcent', { account: nextAccount });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'D\'CENT connection failed.');
     } finally {
@@ -75,6 +87,7 @@ export function useDcentXrplConnect() {
     setAccount(undefined);
     setWalletInfo(undefined);
     setError(undefined);
+    clearXrplWalletState('dcent');
   }
 
   return { account, connecting, error, walletInfo, connect, disconnect };

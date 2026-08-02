@@ -620,6 +620,10 @@ pre {
   padding: 6px 8px;
 }
 
+.spectra-wallet-actions {
+  justify-content: flex-start;
+}
+
 .spectra-quote-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

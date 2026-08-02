@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import SignClient from '@walletconnect/sign-client';
 import type { Hex } from 'viem';
+import { clearXrplWalletState, readXrplWalletState, writeXrplWalletState } from '@/lib/xrplWalletState';
 
 const XRPL_MAINNET_CHAIN_ID = 'xrpl:0';
 const XRPL_NAMESPACE = 'xrpl';
@@ -37,12 +38,24 @@ function parseXrplAccount(caip10Account: string) {
 }
 
 export function useBifrostConnect() {
-  const [account, setAccount] = useState<string | undefined>();
-  const [topic, setTopic] = useState<string | undefined>();
+  const cached = readXrplWalletState('bifrost');
+  const [account, setAccount] = useState<string | undefined>(cached.account);
+  const [topic, setTopic] = useState<string | undefined>(cached.topic);
   const [uri, setUri] = useState<string | undefined>();
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const restoreAttempted = useRef(false);
+
+  useEffect(() => {
+    function onWalletEvent(event: Event) {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.wallet !== 'bifrost') return;
+      setAccount(detail.state?.account);
+      setTopic(detail.state?.topic);
+    }
+    window.addEventListener('flare:xrpl-wallet', onWalletEvent);
+    return () => window.removeEventListener('flare:xrpl-wallet', onWalletEvent);
+  }, []);
 
   useEffect(() => {
     if (restoreAttempted.current) return;
@@ -54,8 +67,10 @@ export function useBifrostConnect() {
         const existing = sessions[sessions.length - 1];
         if (existing) {
           const caip10Account = existing.namespaces[XRPL_NAMESPACE].accounts[0];
-          setAccount(parseXrplAccount(caip10Account));
+          const nextAccount = parseXrplAccount(caip10Account);
+          setAccount(nextAccount);
           setTopic(existing.topic);
+          writeXrplWalletState('bifrost', { account: nextAccount, topic: existing.topic });
         }
       } catch {
         // No project id configured yet, or no persisted session - user can still connect manually.
@@ -82,8 +97,10 @@ export function useBifrostConnect() {
       const session = await approval();
       const caip10Account = session.namespaces[XRPL_NAMESPACE]?.accounts?.[0];
       if (!caip10Account) throw new Error('Bifrost did not return an XRPL account.');
-      setAccount(parseXrplAccount(caip10Account));
+      const nextAccount = parseXrplAccount(caip10Account);
+      setAccount(nextAccount);
       setTopic(session.topic);
+      writeXrplWalletState('bifrost', { account: nextAccount, topic: session.topic });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bifrost connection failed.');
     } finally {
@@ -105,6 +122,7 @@ export function useBifrostConnect() {
     setTopic(undefined);
     setUri(undefined);
     setError(undefined);
+    clearXrplWalletState('bifrost');
   }
 
   return { account, topic, uri, connecting, error, connect, disconnect };

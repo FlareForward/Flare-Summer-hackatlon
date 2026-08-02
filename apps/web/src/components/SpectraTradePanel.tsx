@@ -8,6 +8,8 @@ import { ASSET_MANAGER_FXRP, MASTER_ACCOUNT_CONTROLLER } from '@/config/vaults';
 import { buildHashCommittedUserOp, buildMemoFieldUserOp, computeDirectMintingPaymentDrops } from '@/lib/fsa';
 import { createXamanPayload, type XamanPayload } from '@/lib/xaman';
 import { useXamanConnect } from '@/lib/xamanConnect';
+import { signDcentInstructionPayment, useDcentXrplConnect } from '@/lib/dcent';
+import { signBifrostInstructionPayment, useBifrostConnect } from '@/lib/bifrostConnect';
 import { buildSpectraDirectMintBuyCalls } from '@/lib/spectra/calls';
 import type { SpectraMarket } from '@/lib/spectra/markets';
 import {
@@ -101,7 +103,9 @@ export function SpectraTradePanel({ market }: Props) {
   const [xamanPayload, setXamanPayload] = useState<XamanPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
-  const { account: xamanAccount, connecting: xamanConnecting, error: xamanError, connect: connectXaman, disconnect: disconnectXaman } = useXamanConnect();
+  const { account: xamanAccount, connecting: xamanConnecting, error: xamanError, connect: connectXaman } = useXamanConnect();
+  const { account: dcentAccount, connecting: dcentConnecting, error: dcentError, connect: connectDcent } = useDcentXrplConnect();
+  const { account: bifrostAccount, topic: bifrostTopic, connecting: bifrostConnecting, error: bifrostError, connect: connectBifrost } = useBifrostConnect();
 
   const publicClient = useMemo(
     () =>
@@ -232,10 +236,8 @@ export function SpectraTradePanel({ market }: Props) {
 
   async function buyPtWithXaman() {
     if (!market || !quote || !quoteFxrpIn) return;
-    if (!xamanAccount) {
-      await connectXaman();
-      return;
-    }
+    const xrplAccount = dcentAccount ?? bifrostAccount ?? xamanAccount;
+    if (!xrplAccount) return;
     setBusy(true);
     setStatus('Preparing XRP mint, stXRP stake, and PT buy...');
     try {
@@ -243,7 +245,7 @@ export function SpectraTradePanel({ market }: Props) {
         address: MASTER_ACCOUNT_CONTROLLER,
         abi: masterAccountControllerAbi,
         functionName: 'getPersonalAccount',
-        args: [xamanAccount],
+        args: [xrplAccount],
       });
       const [nonce, coreVaultXrplAddress, executorFeeDrops, feeBips, minimumFeeDrops] = await Promise.all([
         publicClient.readContract({
@@ -287,6 +289,16 @@ export function SpectraTradePanel({ market }: Props) {
         memo = committed.memo;
       }
 
+      if (dcentAccount) {
+        const result = await signDcentInstructionPayment({ account: dcentAccount, destination: coreVaultXrplAddress, amountDrops: paymentDrops, memoHex: memo });
+        setStatus(result.txid ? `D'CENT submitted XRPL tx ${result.txid}. Waiting for Smart Account execution.` : 'D\'CENT signed, but no XRPL tx hash was returned.');
+        return;
+      }
+      if (bifrostAccount && bifrostTopic) {
+        const result = await signBifrostInstructionPayment({ topic: bifrostTopic, account: bifrostAccount, destination: coreVaultXrplAddress, amountDrops: paymentDrops, memoHex: memo });
+        setStatus(result.txid ? `Bifrost submitted XRPL tx ${result.txid}. Waiting for Smart Account execution.` : 'Bifrost signed, but no XRPL tx hash was returned.');
+        return;
+      }
       const payload = await createXamanPayload(coreVaultXrplAddress, paymentDrops, memo);
       setXamanPayload(payload);
       setStatus(
@@ -336,6 +348,7 @@ export function SpectraTradePanel({ market }: Props) {
   const exceedsUsage = selectedUsageBps > MAX_SPECTRA_POOL_USAGE_BPS;
   const exceedsImpact = Boolean(quote && quote.priceImpactBps > MAX_SPECTRA_PRICE_IMPACT_BPS);
   const tradeBlocked = busy || !quote || exceedsImpact || exceedsUsage || !poolState?.coinsVerified || side !== 'buy';
+  const connectedWallet = dcentAccount ? "D'CENT" : bifrostAccount ? 'Bifrost' : xamanAccount ? 'Xaman' : '';
   const maxSafeLabel = activeSuggestion
     ? formatAmount(activeSuggestion.amountIn, market.decimals, side === 'buy' ? 'stXRP after conversion' : 'PT')
     : '-';
@@ -372,12 +385,20 @@ export function SpectraTradePanel({ market }: Props) {
         <button
           type="button"
           className="spectra-action-button"
-          disabled={tradeBlocked}
+          disabled={tradeBlocked || (!dcentAccount && !bifrostAccount && !xamanAccount)}
           onClick={buyPtWithXaman}
         >
-          {side === 'sell' ? 'Sell later' : xamanAccount ? 'Buy PT' : 'Connect Xaman'}
+          {side === 'sell' ? 'Sell later' : connectedWallet ? 'Buy PT' : 'Connect wallet'}
         </button>
       </div>
+
+      {!connectedWallet && side === 'buy' ? (
+        <div className="wallet-actions spectra-wallet-actions">
+          <button type="button" onClick={connectDcent} disabled={dcentConnecting || bifrostConnecting || xamanConnecting}>{dcentConnecting ? 'Waiting...' : "D'CENT"}</button>
+          <button type="button" className="ghost-button" onClick={connectBifrost} disabled={dcentConnecting || bifrostConnecting || xamanConnecting}>{bifrostConnecting ? 'Waiting...' : 'Bifrost'}</button>
+          <button type="button" className="ghost-button" onClick={connectXaman} disabled={dcentConnecting || bifrostConnecting || xamanConnecting}>{xamanConnecting ? 'Waiting...' : 'Xaman'}</button>
+        </div>
+      ) : null}
 
       <div className="spectra-capacity-line">
         <span>Max safe {side}: {maxSafeLabel}</span>
@@ -420,9 +441,11 @@ export function SpectraTradePanel({ market }: Props) {
 
       {exceedsImpact ? <p className="status-line warning">Reduce size. Price impact must stay at or below 50 bps.</p> : null}
       {exceedsUsage ? <p className="status-line warning">Reduce size. Pool usage must stay at or below 1%.</p> : null}
+      {dcentError ? <p className="status-line warning">{dcentError}</p> : null}
+      {bifrostError ? <p className="status-line warning">{bifrostError}</p> : null}
       {xamanError ? <p className="status-line warning">{xamanError}</p> : null}
       {status ? <p className="status-line">{status}</p> : null}
-      {xamanAccount ? <p className="status-line">Xaman connected: {xamanAccount}</p> : null}
+      {connectedWallet ? <p className="status-line">{connectedWallet} connected: {dcentAccount ?? bifrostAccount ?? xamanAccount}</p> : null}
       {xamanPayload ? (
         <div className="sign-box spectra-sign-box">
           <div>
