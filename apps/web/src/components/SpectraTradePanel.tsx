@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPublicClient, formatUnits, http, parseUnits, type Address, type Hex } from 'viem';
-import { assetManagerAbi, masterAccountControllerAbi, stakedXrpAbi } from '@/config/abis';
+import { assetManagerAbi, erc20Abi, masterAccountControllerAbi, stakedXrpAbi } from '@/config/abis';
 import { flare } from '@/config/wagmi';
-import { ASSET_MANAGER_FXRP, MASTER_ACCOUNT_CONTROLLER } from '@/config/vaults';
+import { ASSET_MANAGER_FXRP, FXRP_ADDRESS, MASTER_ACCOUNT_CONTROLLER } from '@/config/vaults';
 import { buildHashCommittedUserOp, buildMemoFieldUserOp, computeDirectMintingPaymentDrops } from '@/lib/fsa';
-import { createXamanPayload, type XamanPayload } from '@/lib/xaman';
+import { createXamanPayload, getXamanPayloadStatus, type XamanPayload, type XamanPayloadStatus } from '@/lib/xaman';
 import { useXamanConnect } from '@/lib/xamanConnect';
 import { signDcentInstructionPayment, useDcentXrplConnect } from '@/lib/dcent';
 import { signBifrostInstructionPayment, useBifrostConnect } from '@/lib/bifrostConnect';
@@ -41,6 +41,10 @@ type ReferencePrices = {
 };
 
 type BuyInputAsset = 'xrp' | 'fxrp';
+
+type SpectraPayment = { memo: Hex; paymentDrops: string; label: string };
+
+const XRPL_MEMO_HEX_LIMIT = 2048;
 
 function formatAmount(value?: bigint, decimals = 18, symbol = '') {
   if (value == null) return '-';
@@ -101,6 +105,8 @@ export function SpectraTradePanel({ market }: Props) {
   const [quote, setQuote] = useState<SpectraQuote | null>(null);
   const [quoteFxrpIn, setQuoteFxrpIn] = useState<bigint | null>(null);
   const [xamanPayload, setXamanPayload] = useState<XamanPayload | null>(null);
+  const [xamanStatus, setXamanStatus] = useState<XamanPayloadStatus | null>(null);
+  const [xamanSequence, setXamanSequence] = useState<{ payments: SpectraPayment[]; destination: string; currentIndex: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const { account: xamanAccount, connecting: xamanConnecting, error: xamanError, connect: connectXaman } = useXamanConnect();
@@ -234,6 +240,49 @@ export function SpectraTradePanel({ market }: Props) {
     if (!response.ok) throw new Error(await response.text().catch(() => 'Executor did not accept the committed UserOp.'));
   }
 
+  async function createSpectraXamanPayload(payments: SpectraPayment[], destination: string, index: number) {
+    const payment = payments[index];
+    setStatus(`Creating Xaman request ${index + 1} of ${payments.length}: ${payment.label}...`);
+    const payload = await createXamanPayload(destination, payment.paymentDrops, payment.memo);
+    setXamanPayload(payload);
+    setXamanStatus(null);
+    setXamanSequence({ payments, destination, currentIndex: index });
+    setStatus(`Open Xaman and sign payment ${index + 1} of ${payments.length}: ${payment.label}.`);
+  }
+
+  async function signSplitBuyWithXaman(payments: SpectraPayment[], destination: string) {
+    try {
+      await createSpectraXamanPayload(payments, destination, 0);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Unable to create Xaman direct-mint payment.');
+      setXamanSequence(null);
+    }
+  }
+
+  async function signSplitBuyWithDcent(payments: SpectraPayment[], destination: string, account: string) {
+    const signedTxids: string[] = [];
+    for (let i = 0; i < payments.length; i += 1) {
+      const payment = payments[i];
+      setStatus(`Confirm D'CENT payment ${i + 1} of ${payments.length}: ${payment.label}.`);
+      const result = await signDcentInstructionPayment({ account, destination, amountDrops: payment.paymentDrops, memoHex: payment.memo });
+      if (!result.txid) throw new Error('Wallet completed but did not return an XRPL transaction hash. Check D\'CENT activity before trying again.');
+      signedTxids.push(result.txid);
+    }
+    setStatus(`Signed ${payments.length} payments in D'CENT. Waiting for Smart Account execution.`);
+  }
+
+  async function signSplitBuyWithBifrost(payments: SpectraPayment[], destination: string, account: string, topic: string) {
+    const signedTxids: string[] = [];
+    for (let i = 0; i < payments.length; i += 1) {
+      const payment = payments[i];
+      setStatus(`Confirm Bifrost payment ${i + 1} of ${payments.length}: ${payment.label}.`);
+      const result = await signBifrostInstructionPayment({ topic, account, destination, amountDrops: payment.paymentDrops, memoHex: payment.memo });
+      if (!result.txid) throw new Error('Wallet completed but did not return an XRPL transaction hash. Check Bifrost activity before trying again.');
+      signedTxids.push(result.txid);
+    }
+    setStatus(`Signed ${payments.length} payments in Bifrost. Waiting for Smart Account execution.`);
+  }
+
   async function buyPtWithXaman() {
     if (!market || !quote || !quoteFxrpIn) return;
     const xrplAccount = dcentAccount ?? bifrostAccount ?? xamanAccount;
@@ -247,7 +296,7 @@ export function SpectraTradePanel({ market }: Props) {
         functionName: 'getPersonalAccount',
         args: [xrplAccount],
       });
-      const [nonce, coreVaultXrplAddress, executorFeeDrops, feeBips, minimumFeeDrops] = await Promise.all([
+      const [nonce, coreVaultXrplAddress, executorFeeDrops, feeBips, minimumFeeDrops, fxrpAllowance, stXrpAllowance] = await Promise.all([
         publicClient.readContract({
           address: MASTER_ACCOUNT_CONTROLLER,
           abi: masterAccountControllerAbi,
@@ -258,6 +307,8 @@ export function SpectraTradePanel({ market }: Props) {
         publicClient.readContract({ address: ASSET_MANAGER_FXRP, abi: assetManagerAbi, functionName: 'getDirectMintingExecutorFeeUBA', args: [] }),
         publicClient.readContract({ address: ASSET_MANAGER_FXRP, abi: assetManagerAbi, functionName: 'getDirectMintingFeeBIPS', args: [] }),
         publicClient.readContract({ address: ASSET_MANAGER_FXRP, abi: assetManagerAbi, functionName: 'getDirectMintingMinimumFeeUBA', args: [] }),
+        publicClient.readContract({ address: FXRP_ADDRESS, abi: erc20Abi, functionName: 'allowance', args: [personalAccount, market.ibt] }).catch(() => BigInt(0)),
+        publicClient.readContract({ address: market.ibt, abi: erc20Abi, functionName: 'allowance', args: [personalAccount, market.pool] }).catch(() => BigInt(0)),
       ]);
 
       const calls = buildSpectraDirectMintBuyCalls({
@@ -266,41 +317,67 @@ export function SpectraTradePanel({ market }: Props) {
         stXrpAmount: quote.amountIn,
         minimumPtReceived: quote.minimumReceived,
         personalAccount,
+        fxrpAllowance,
+        stXrpAllowance,
       });
-      const paymentDrops = computeDirectMintingPaymentDrops({
+      const fullPaymentDrops = computeDirectMintingPaymentDrops({
         netMintDrops: buyInputAsset === 'xrp' ? quoteFxrpIn : BigInt(0),
         feeBips,
         minimumFeeDrops,
         executorFeeDrops,
       }).toString();
 
-      let memo = buildMemoFieldUserOp({ calls, sender: personalAccount, nonce });
-      if (memo.length - 2 > 2048) {
-        const committed = buildHashCommittedUserOp({ calls, sender: personalAccount, nonce });
-        await submitHashCommittedDirectMint({
-          memo: committed.memo,
-          packedUserOperation: committed.packedUserOperation,
-          userOpHash: committed.userOpHash,
-          sender: personalAccount,
-          nonce,
-          destination: coreVaultXrplAddress,
-          amountDrops: paymentDrops,
-        });
-        memo = committed.memo;
+      const inlineMemo = buildMemoFieldUserOp({ calls, sender: personalAccount, nonce });
+      let payments: SpectraPayment[] = [{ memo: inlineMemo, paymentDrops: fullPaymentDrops, label: 'buy PT' }];
+
+      if (inlineMemo.length - 2 > XRPL_MEMO_HEX_LIMIT) {
+        const executorUrl = process.env.NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL;
+        if (executorUrl) {
+          const committed = buildHashCommittedUserOp({ calls, sender: personalAccount, nonce });
+          await submitHashCommittedDirectMint({
+            memo: committed.memo,
+            packedUserOperation: committed.packedUserOperation,
+            userOpHash: committed.userOpHash,
+            sender: personalAccount,
+            nonce,
+            destination: coreVaultXrplAddress,
+            amountDrops: fullPaymentDrops,
+          });
+          payments = [{ memo: committed.memo, paymentDrops: fullPaymentDrops, label: 'buy PT' }];
+        } else {
+          const memoOnlyPaymentDrops = computeDirectMintingPaymentDrops({
+            netMintDrops: BigInt(0),
+            feeBips,
+            minimumFeeDrops,
+            executorFeeDrops,
+          }).toString();
+          payments = calls.map((call, index) => {
+            const memo = buildMemoFieldUserOp({ calls: [call], sender: personalAccount, nonce: nonce + BigInt(index) });
+            if (memo.length - 2 > XRPL_MEMO_HEX_LIMIT) {
+              throw new Error(`${call.label} exceeds XRPL's 1024-byte memo limit by itself. Configure NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL for this operation.`);
+            }
+            return { memo, paymentDrops: index === 0 ? fullPaymentDrops : memoOnlyPaymentDrops, label: call.label };
+          });
+          setStatus(`Inline memo is too large, so this buy needs ${payments.length} signatures instead of one.`);
+        }
       }
 
       if (dcentAccount) {
-        const result = await signDcentInstructionPayment({ account: dcentAccount, destination: coreVaultXrplAddress, amountDrops: paymentDrops, memoHex: memo });
-        setStatus(result.txid ? `D'CENT submitted XRPL tx ${result.txid}. Waiting for Smart Account execution.` : 'D\'CENT signed, but no XRPL tx hash was returned.');
+        await signSplitBuyWithDcent(payments, coreVaultXrplAddress, dcentAccount);
         return;
       }
       if (bifrostAccount && bifrostTopic) {
-        const result = await signBifrostInstructionPayment({ topic: bifrostTopic, account: bifrostAccount, destination: coreVaultXrplAddress, amountDrops: paymentDrops, memoHex: memo });
-        setStatus(result.txid ? `Bifrost submitted XRPL tx ${result.txid}. Waiting for Smart Account execution.` : 'Bifrost signed, but no XRPL tx hash was returned.');
+        await signSplitBuyWithBifrost(payments, coreVaultXrplAddress, bifrostAccount, bifrostTopic);
         return;
       }
-      const payload = await createXamanPayload(coreVaultXrplAddress, paymentDrops, memo);
+      if (payments.length > 1) {
+        await signSplitBuyWithXaman(payments, coreVaultXrplAddress);
+        return;
+      }
+      const payload = await createXamanPayload(coreVaultXrplAddress, payments[0].paymentDrops, payments[0].memo);
       setXamanPayload(payload);
+      setXamanStatus(null);
+      setXamanSequence(null);
       setStatus(
         buyInputAsset === 'xrp'
           ? `Open Xaman to mint ${formatUnits(quoteFxrpIn, 6)} FXRP, stake to stXRP, and buy PT.`
@@ -329,6 +406,35 @@ export function SpectraTradePanel({ market }: Props) {
     }, 450);
     return () => clearTimeout(timeout);
   }, [amount, side, slippageBps, market, refreshMarket]);
+
+  useEffect(() => {
+    if (!xamanPayload || xamanStatus?.resolved) return undefined;
+    const interval = setInterval(async () => {
+      try {
+        const result = await getXamanPayloadStatus(xamanPayload.uuid);
+        setXamanStatus(result);
+        if (!result.resolved) return;
+        if (result.signed) {
+          if (xamanSequence && xamanSequence.currentIndex + 1 < xamanSequence.payments.length) {
+            const nextIndex = xamanSequence.currentIndex + 1;
+            await createSpectraXamanPayload(xamanSequence.payments, xamanSequence.destination, nextIndex);
+          } else {
+            setStatus(result.txid ? `Xaman signed (${result.txid}). Waiting for Smart Account execution.` : 'Xaman signed, but no XRPL tx hash was returned.');
+            setXamanSequence(null);
+          }
+        } else if (result.cancelled) {
+          setStatus('Xaman request was cancelled.');
+          setXamanSequence(null);
+        } else if (result.expired) {
+          setStatus('Xaman request expired. Try again.');
+          setXamanSequence(null);
+        }
+      } catch {
+        // transient polling error, retry on next tick
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [xamanPayload, xamanStatus?.resolved, xamanSequence]);
 
   if (!market) {
     return (
@@ -450,7 +556,13 @@ export function SpectraTradePanel({ market }: Props) {
         <div className="sign-box spectra-sign-box">
           <div>
             <h3>Sign in Xaman</h3>
-            <p>{buyInputAsset === 'xrp' ? 'Approve the XRP payment. The memo instructs the Smart Account to mint FXRP, stake stXRP, and buy PT.' : 'Approve the XRPL instruction payment. The memo instructs the Smart Account to stake FXRP and buy PT.'}</p>
+            <p>
+              {xamanSequence
+                ? `Payment ${xamanSequence.currentIndex + 1} of ${xamanSequence.payments.length}: ${xamanSequence.payments[xamanSequence.currentIndex].label}.`
+                : buyInputAsset === 'xrp'
+                  ? 'Approve the XRP payment. The memo instructs the Smart Account to mint FXRP, stake stXRP, and buy PT.'
+                  : 'Approve the XRPL instruction payment. The memo instructs the Smart Account to stake FXRP and buy PT.'}
+            </p>
             {xamanPayload.deeplink ? <a href={xamanPayload.deeplink} target="_blank" rel="noreferrer" className="primary-link">Open in Xaman</a> : null}
           </div>
           {xamanPayload.qrPng ? <img src={xamanPayload.qrPng} alt="Xaman sign QR code" width={132} height={132} /> : null}

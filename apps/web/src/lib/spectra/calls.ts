@@ -41,27 +41,21 @@ export function buildSpectraTradeCalls(args: {
   ];
 }
 
+const MAX_UINT256 = (BigInt(1) << BigInt(256)) - BigInt(1);
+
 export function buildSpectraDirectMintBuyCalls(args: {
   market: SpectraMarket;
   fxrpAmount: bigint;
   stXrpAmount: bigint;
   minimumPtReceived: bigint;
   personalAccount: Address;
+  fxrpAllowance: bigint;
+  stXrpAllowance: bigint;
 }): FsaCall[] {
-  const approveFxrp = encodeFunctionData({
-    abi: erc20Abi,
-    functionName: 'approve',
-    args: [args.market.ibt, args.fxrpAmount],
-  });
   const stakeFxrp = encodeFunctionData({
     abi: stakedXrpAbi,
     functionName: 'deposit',
     args: [args.fxrpAmount, args.personalAccount],
-  });
-  const approveStXrp = encodeFunctionData({
-    abi: erc20Abi,
-    functionName: 'approve',
-    args: [args.market.pool, args.stXrpAmount],
   });
   const buyPt = encodeFunctionData({
     abi: spectraPoolAbi,
@@ -69,30 +63,37 @@ export function buildSpectraDirectMintBuyCalls(args: {
     args: [BigInt(0), BigInt(1), args.stXrpAmount, args.minimumPtReceived],
   });
 
-  return [
-    {
+  const calls: FsaCall[] = [];
+
+  // Approve max once so repeat buys skip re-approval and stay small enough for a single inline memo.
+  if (args.fxrpAllowance < args.fxrpAmount) {
+    calls.push({
       target: FXRP_ADDRESS,
       value: BigInt(0),
-      data: approveFxrp,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [args.market.ibt, MAX_UINT256] }),
       label: 'Approve FXRP for stXRP staking',
-    },
-    {
+    });
+  }
+  calls.push({
+    target: args.market.ibt,
+    value: BigInt(0),
+    data: stakeFxrp,
+    label: 'Stake FXRP into stXRP',
+  });
+  if (args.stXrpAllowance < args.stXrpAmount) {
+    calls.push({
       target: args.market.ibt,
       value: BigInt(0),
-      data: stakeFxrp,
-      label: 'Stake FXRP into stXRP',
-    },
-    {
-      target: args.market.ibt,
-      value: BigInt(0),
-      data: approveStXrp,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [args.market.pool, MAX_UINT256] }),
       label: 'Approve stXRP for Spectra pool',
-    },
-    {
-      target: args.market.pool,
-      value: BigInt(0),
-      data: buyPt,
-      label: 'Buy Spectra PT',
-    },
-  ];
+    });
+  }
+  calls.push({
+    target: args.market.pool,
+    value: BigInt(0),
+    data: buyPt,
+    label: 'Buy Spectra PT',
+  });
+
+  return calls;
 }

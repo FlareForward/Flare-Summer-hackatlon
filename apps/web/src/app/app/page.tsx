@@ -22,7 +22,7 @@ export default function AppPage() {
     const params = new URLSearchParams(window.location.search);
     const requestedVault = vaultById(params.get('vault'));
     if (requestedVault) setSelectedVault(requestedVault);
-    if (params.get('view') === 'defi') setView('defi');
+    // Flare DeFi (Spectra) tab is temporarily hidden from the UI; view stays 'experimental'.
   }, []);
 
   function selectView(nextView: ProductView) {
@@ -46,17 +46,6 @@ export default function AppPage() {
     <div className="app-shell">
       <Header />
       <main className="shell page-stack">
-        <nav className="product-tabs" aria-label="Product areas" role="tablist">
-          <button type="button" className={view === 'experimental' ? 'product-tab active' : 'product-tab'} aria-selected={view === 'experimental'} role="tab" onClick={() => selectView('experimental')}>
-            <span>Experimental Vaults</span>
-            <small>Managed strategies</small>
-          </button>
-          <button type="button" className={view === 'defi' ? 'product-tab active' : 'product-tab'} aria-selected={view === 'defi'} role="tab" onClick={() => selectView('defi')}>
-            <span>Flare DeFi</span>
-            <small>Direct protocol access</small>
-          </button>
-        </nav>
-
         {view === 'experimental' ? (
           <>
         <section className="hero experimental-hero">

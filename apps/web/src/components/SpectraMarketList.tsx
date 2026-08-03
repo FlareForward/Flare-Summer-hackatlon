@@ -22,6 +22,11 @@ function daysToMaturity(maturityTs: number) {
   return Math.max(0, Math.ceil((maturityTs * 1000 - Date.now()) / 86_400_000));
 }
 
+function formatRoi(impliedApy: number, maturityTs: number) {
+  const roi = (impliedApy * daysToMaturity(maturityTs)) / 365;
+  return `${roi.toFixed(2)}%`;
+}
+
 export function SpectraMarketList({ markets, selectedPool, onSelect }: Props) {
   if (markets.length === 0) {
     return (
@@ -55,7 +60,7 @@ export function SpectraMarketList({ markets, selectedPool, onSelect }: Props) {
           <div className="protocol-facts compact-facts">
             <div><span>Liquidity</span><strong>{formatUsd(market.liquidityUsd)}</strong></div>
             <div><span>Maturity</span><strong>{formatMaturity(market.maturityTs)}</strong></div>
-            <div><span>Days</span><strong>{daysToMaturity(market.maturityTs)}</strong></div>
+            <div><span>ROI</span><strong>{formatRoi(market.impliedApy, market.maturityTs)}</strong></div>
             <div><span>Implied APY</span><strong>{formatApy(market.impliedApy)}</strong></div>
           </div>
         </button>
