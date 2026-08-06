@@ -1,0 +1,475 @@
+/*
+ * Combined Flare Summer Signal landing.
+ *
+ * Palette and type are lifted from the Flare Vault page so the two submissions read
+ * as one product. The load-bearing idea is the colour coding: cyan is Apex, violet is
+ * the Vault, and that pairing holds in the cards, the buttons, and the proof groups —
+ * so you always know which project you are looking at without reading a label.
+ */
+
+.page {
+  --bg: #07040f;
+  --bg2: #0c0820;
+  --panel: #14102c;
+  --panel2: #1a1440;
+  --line: #beacff2e;
+  --lineStrong: #beacff5c;
+  --text: #f4eefc;
+  --muted: #a89bc7;
+  --faint: #776b96;
+  --trade: #57c6ff;
+  --vault: #b573ff;
+  --good: #5be8b5;
+  --warn: #ffb75c;
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", ui-serif, serif;
+  --mono: ui-monospace, "Cascadia Code", Consolas, "SFMono-Regular", Menlo, monospace;
+  --shadow: 0 24px 70px #00000070;
+
+  position: relative;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(60rem 40rem at 18% -8%, #b573ff1f, transparent 60%),
+    radial-gradient(50rem 34rem at 92% 12%, #57c6ff14, transparent 62%);
+}
+
+.wrap {
+  position: relative;
+  z-index: 1;
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 6rem;
+}
+
+/* ---- visit counter ---- */
+.counter {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 2.5rem 0 0.5rem;
+}
+.counterNum {
+  font-family: var(--display);
+  font-size: clamp(2.6rem, 6vw, 3.6rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.counterLabel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ---- masthead ---- */
+.mast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.5rem 0 0;
+}
+.brand {
+  font-family: var(--display);
+  font-size: 1.1rem;
+}
+.brand em {
+  font-style: normal;
+  color: var(--muted);
+}
+.eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ---- hero ---- */
+.hero {
+  padding: 4rem 0 0;
+}
+.h1 {
+  font-family: var(--display);
+  font-size: clamp(2.4rem, 6.4vw, 4.2rem);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  margin: 0 0 1.25rem;
+  max-width: 18ch;
+}
+.h1 span {
+  color: var(--vault);
+}
+.lede {
+  font-size: clamp(1rem, 1.6vw, 1.15rem);
+  color: var(--muted);
+  max-width: 54ch;
+  margin: 0;
+}
+
+/* ---- live price strip ---- */
+.ticker {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-top: 2.25rem;
+  padding: 0.85rem 1.15rem;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--good);
+  border-radius: 0.6rem;
+  background: var(--bg2);
+}
+.pulse {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--good);
+  align-self: center;
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.tickerLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tickerPrice {
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--good);
+}
+.tickerNote {
+  font-size: 0.8rem;
+  color: var(--faint);
+}
+
+/* ---- the fork: one start, two lanes ---- */
+.fork {
+  display: block;
+  width: 100%;
+  height: 4.5rem;
+  margin-top: 2.5rem;
+  overflow: visible;
+}
+.fork path {
+  fill: none;
+  stroke-width: 1.25;
+  opacity: 0.85;
+}
+.toTrade { stroke: var(--trade); }
+.toVault { stroke: var(--vault); }
+.fork circle { fill: var(--text); }
+
+/* ---- the two paths ---- */
+.paths {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1.1rem;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.9rem 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, var(--panel), var(--bg2));
+  box-shadow: var(--shadow);
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.card:hover,
+.card:focus-within {
+  transform: translateY(-5px);
+  border-color: var(--tint);
+  box-shadow: 0 28px 80px #00000090, 0 0 0 1px var(--tint) inset;
+}
+.cardTrade { --tint: var(--trade); }
+.cardVault { --tint: var(--vault); }
+
+.cardTag {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--tint);
+  background: color-mix(in srgb, var(--tint) 12%, transparent);
+  color: var(--tint);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.cardTitle {
+  font-family: var(--display);
+  font-size: 1.8rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.cardBody {
+  color: var(--muted);
+  margin: 0;
+  font-size: 1rem;
+}
+.cardFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+.go {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.4rem;
+  border-radius: 999px;
+  background: var(--tint);
+  color: #0c0620;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+.go:hover {
+  filter: brightness(1.12);
+  transform: translateX(2px);
+}
+.go:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+.cardNote {
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+
+/* ---- sections ---- */
+.sect { padding: 4.5rem 0 0; }
+.sectHead { margin-bottom: 1.75rem; }
+.h3 {
+  font-family: var(--display);
+  font-size: clamp(1.6rem, 3.2vw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.4rem;
+}
+.kicker {
+  color: var(--muted);
+  margin: 0;
+  max-width: 58ch;
+}
+
+/* ---- shared six steps ---- */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.75rem;
+  counter-reset: step;
+}
+.step {
+  padding: 1.15rem 1rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--panel);
+  transition: transform 0.22s ease, background 0.22s ease, border-color 0.22s ease;
+}
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--faint);
+  margin-bottom: 0.5rem;
+  transition: color 0.22s ease;
+}
+.step b {
+  display: block;
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+.step:hover {
+  transform: translateY(-4px);
+  background: var(--panel2);
+  border-color: var(--lineStrong);
+}
+.step:hover::before { color: var(--good); }
+
+/* ---- proof ---- */
+.proof {
+  margin-top: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--bg2);
+  overflow: hidden;
+}
+.proofSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.35rem 1.6rem;
+  cursor: pointer;
+  list-style: none;
+}
+.proofSummary::-webkit-details-marker { display: none; }
+.proofSummary:focus-visible {
+  outline: 2px solid var(--trade);
+  outline-offset: -2px;
+}
+.proofClaim {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+.proofClaim b {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--good) 45%, transparent);
+  background: #5be8b514;
+  color: var(--good);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.proofToggle {
+  color: var(--trade);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.proofBody {
+  padding: 0 1.6rem 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.proofGroup h4 {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tint);
+  margin: 0 0 0.7rem;
+}
+.groupTrade { --tint: var(--trade); }
+.groupVault { --tint: var(--vault); }
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+}
+.rowMain {
+  min-width: 15rem;
+  flex: 1;
+}
+.rowMain b {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.rowMain code {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--faint);
+  word-break: break-all;
+  margin-top: 0.2rem;
+}
+.rowLink {
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--tint) 40%, transparent);
+  background: color-mix(in srgb, var(--tint) 10%, transparent);
+  color: var(--tint);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.rowLink:hover {
+  background: color-mix(in srgb, var(--tint) 20%, transparent);
+}
+.rowLink:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.pending {
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--lineStrong);
+  border-radius: 0.6rem;
+  color: var(--faint);
+  font-size: 0.85rem;
+}
+
+/* ---- footer ---- */
+.foot {
+  margin-top: 4rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.foot p { margin: 0; }
+.foot a { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse,
+  .card,
+  .step,
+  .go {
+    animation: none;
+    transition: none;
+  }
+}
