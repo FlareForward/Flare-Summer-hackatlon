@@ -701,3 +701,28 @@
   outline: 2px solid var(--l-accent-2);
   outline-offset: 2px;
 }
+
+/* Shared visit counter — the same running total the Apex landing shows, so the
+   number means "people who came to either project", not "people who came here". */
+.landing-visits {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 2.25rem 0 0.5rem;
+}
+.landing-visits-num {
+  font-family: var(--l-font-display, Georgia, serif);
+  font-size: clamp(2.4rem, 5.5vw, 3.4rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--l-text, #f4eefc);
+}
+.landing-visits-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--l-text-faint, #776b96);
+}
