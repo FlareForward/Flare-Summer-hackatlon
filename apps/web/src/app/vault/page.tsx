@@ -9,6 +9,7 @@ import { Why } from '@/components/landing/Why';
 import { Note } from '@/components/landing/Note';
 import { Final } from '@/components/landing/Final';
 import { LandingVaultReadoutProvider } from '@/components/landing/useLandingVaultReadout';
+import { SharedViewCounter } from '@/components/SharedViewCounter';
 
 export default function LandingPage() {
   return (
@@ -16,6 +17,11 @@ export default function LandingPage() {
       <div className="landing-page">
         <ScrollRail />
         <div className="landing-body">
+        <SharedViewCounter
+          wrapClassName="landing-visits"
+          numberClassName="landing-visits-num"
+          labelClassName="landing-visits-label"
+        />
         <Hero />
         <Problem />
         <Solution />
