@@ -695,12 +695,6 @@ export function SmartAccountPanel({ vault }: Props) {
       }).catch(() => BigInt(0));
       const depositCall = buildDepositOnlyCall(vault, netMintDrops, account);
       const nextCalls = allowance >= netMintDrops ? [depositCall] : [buildApproveAssetCall(vault), depositCall];
-      const inlineMemo = buildMemoFieldUserOp({
-        calls: nextCalls,
-        sender: account,
-        nonce,
-      });
-      const memoHexLength = inlineMemo.length - 2;
       setCalls(nextCalls);
 
       const fullPaymentDrops = computeDirectMintingPaymentDrops({
@@ -716,38 +710,16 @@ export function SmartAccountPanel({ vault }: Props) {
         executorFeeDrops,
       }).toString();
 
-      let payments: DirectMintPayment[] = [
-        { memo: inlineMemo, paymentDrops: fullPaymentDrops, mode: 'inline', label: 'mint amount plus fees' },
-      ];
-      let packedUserOperation: Hex | undefined;
-      let userOpHash: Hex | undefined;
-      let memoMode: DirectMintMode = 'inline';
-
-      if (memoHexLength > XRPL_MEMO_HEX_LIMIT) {
-        if (DIRECT_MINT_EXECUTOR_URL) {
-          const committed = buildHashCommittedUserOp({
-            calls: nextCalls,
-            sender: account,
-            nonce,
-          });
-          payments = [{ memo: committed.memo, paymentDrops: fullPaymentDrops, mode: 'hash', label: 'mint amount plus fees' }];
-          packedUserOperation = committed.packedUserOperation;
-          userOpHash = committed.userOpHash;
-          memoMode = 'hash';
-        } else {
-          const [approveCall, depositCall] = nextCalls;
-          const approveMemo = buildMemoFieldUserOp({ calls: [approveCall], sender: account, nonce });
-          const depositMemo = buildMemoFieldUserOp({ calls: [depositCall], sender: account, nonce: nonce + BigInt(1) });
-          if (approveMemo.length - 2 > XRPL_MEMO_HEX_LIMIT || depositMemo.length - 2 > XRPL_MEMO_HEX_LIMIT) {
-            throw new Error('The split inline memo path still exceeds XRPL\'s 1024-byte memo limit. Configure NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL for the 0xFE executor path.');
-          }
-          payments = [
-            { memo: approveMemo, paymentDrops: fullPaymentDrops, mode: 'split', label: `mint FXRP and approve ${vault.name}` },
-            { memo: depositMemo, paymentDrops: memoOnlyPaymentDrops, mode: 'split', label: `deposit into ${vault.name}` },
-          ];
-          memoMode = 'split';
-        }
-      }
+      const { payments, memoMode, packedUserOperation, userOpHash } = await resolveDirectMintPayments({
+        calls: nextCalls,
+        account,
+        nonce,
+        destination: coreVaultXrplAddress,
+        combinedPaymentDrops: fullPaymentDrops,
+        combinedLabel: 'mint amount plus fees',
+        splitPaymentDropsFor: (_call, index) => (index === 0 ? fullPaymentDrops : memoOnlyPaymentDrops),
+        splitLabelFor: (_call, index) => (index === 0 ? `mint FXRP and approve ${vault.name}` : `deposit into ${vault.name}`),
+      });
 
       setPaymentReference(payments[0].memo);
       setDirectMintUserOp(packedUserOperation);
@@ -757,19 +729,7 @@ export function SmartAccountPanel({ vault }: Props) {
       setDirectMintPaymentDrops(totalPaymentDrops);
       setDirectMintDestination(coreVaultXrplAddress);
 
-      if (memoMode === 'hash') {
-        setStatus('Submitting the 0xFE committed UserOp to the executor before wallet signing...');
-        await submitHashCommittedUserOp({
-          memo: payments[0].memo,
-          packedUserOperation: packedUserOperation!,
-          userOpHash: userOpHash!,
-          sender: account,
-          nonce,
-          destination: coreVaultXrplAddress,
-          amountDrops: payments[0].paymentDrops,
-        });
-        setStatus('Executor accepted the committed UserOp. Sign the compact 0xFE direct-mint payment.');
-      } else if (memoMode === 'split') {
+      if (memoMode === 'split') {
         setStatus(`Inline memo is too large, so this will use two D'CENT signatures. Payment 2 is fee-only: ${formatUnits(BigInt(memoOnlyPaymentDrops), 6)} XRP.`);
       }
       return { payments, coreVaultXrplAddress };
@@ -862,25 +822,24 @@ export function SmartAccountPanel({ vault }: Props) {
         executorFeeDrops,
       }).toString();
 
-      const inlineMemo = buildMemoFieldUserOp({ calls: nextCalls, sender: account, nonce });
-      let payments: DirectMintPayment[];
-      if (inlineMemo.length - 2 <= XRPL_MEMO_HEX_LIMIT) {
-        payments = [{ memo: inlineMemo, paymentDrops: memoOnlyPaymentDrops, mode: 'inline', label: instructionLabel }];
-      } else {
-        payments = nextCalls.map((call, index) => {
-          const memo = buildMemoFieldUserOp({ calls: [call], sender: account, nonce: nonce + BigInt(index) });
-          if (memo.length - 2 > XRPL_MEMO_HEX_LIMIT) {
-            throw new Error(`${call.label} exceeds XRPL's 1024-byte memo limit by itself. Configure NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL for this operation.`);
-          }
-          return { memo, paymentDrops: memoOnlyPaymentDrops, mode: 'split' as const, label: call.label };
-        });
-      }
+      const { payments, memoMode, packedUserOperation, userOpHash } = await resolveDirectMintPayments({
+        calls: nextCalls,
+        account,
+        nonce,
+        destination: coreVaultXrplAddress,
+        combinedPaymentDrops: memoOnlyPaymentDrops,
+        combinedLabel: instructionLabel,
+        splitPaymentDropsFor: () => memoOnlyPaymentDrops,
+        splitLabelFor: (call) => call.label,
+      });
 
       setPaymentReference(payments[0].memo);
-      setDirectMintMode(payments.length > 1 ? 'split' : 'inline');
+      setDirectMintUserOp(packedUserOperation);
+      setDirectMintMode(memoMode);
+      setCallHash(userOpHash);
       setDirectMintDestination(coreVaultXrplAddress);
       setDirectMintPaymentDrops(payments.reduce((sum, payment) => sum + BigInt(payment.paymentDrops), BigInt(0)).toString());
-      if (payments.length > 1) {
+      if (memoMode === 'split') {
         setStatus(`This ${instructionLabel} needs ${payments.length} fee-only D'CENT signatures of ${formatUnits(BigInt(memoOnlyPaymentDrops), 6)} XRP each.`);
       }
       return { payments, coreVaultXrplAddress };

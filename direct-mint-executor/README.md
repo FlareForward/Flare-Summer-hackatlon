@@ -59,13 +59,25 @@ FDC_DA_LAYER_BASE_URL=https://flr-data-availability.flare.network
 XRPL_RPC_URL=https://xrplcluster.com/
 DIRECT_MINT_MAX_ATTEMPTS=240            # x pollIntervalMs = how long it waits before giving up
 DIRECT_MINT_POLL_INTERVAL_MS=15000
+
+# Optional - comma-separated vault addresses this executor is allowed to drive deposits into,
+# beyond the default Spectra pool flow. Unset means only the Spectra flow is allow-listed.
+DIRECT_MINT_ERC4626_VAULTS=0xadb3f75c01eda514d476998f96523c1031dda25b   # ConcentratedLpVault (FXRP/USDT0 LP leaf) - matches vaults.ts FXRP_USDT0_LP_LEAF
+DIRECT_MINT_CARRY_VAULTS=0x92613ec8058fbf6991f176a48cba2e2e7d8ba60c    # CarryTradeVaultV2 (FXRP/USDT0 LP Carry Vault) - matches vaults.ts NEXT_PUBLIC_CARRY_FXRP_USDT0_LP_VAULT
 ```
 
 Don't set a port var - it falls back to `PORT` automatically if your host injects one (Railway
 does).
 
-Double-check `ASSET_MANAGER_FXRP`/`FXRP_ADDRESS`/`MASTER_ACCOUNT_CONTROLLER` against the current
-values in `apps/web/src/config/vaults.ts` before running - copy them from there, don't retype them.
+Double-check `ASSET_MANAGER_FXRP`/`FXRP_ADDRESS`/`MASTER_ACCOUNT_CONTROLLER`/`DIRECT_MINT_ERC4626_VAULTS`/
+`DIRECT_MINT_CARRY_VAULTS` against the current values in `apps/web/src/config/vaults.ts` before
+running - copy them from there, don't retype them.
+
+Adding a vault address to one of these two lists is what lets the executor accept a single
+hash-committed UserOp for that vault's approve+deposit sequence (one XRPL signature) instead of
+falling back to two separate XRPL payments. The frontend also needs
+`NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL` pointed at this server, or it never attempts the
+hash-committed path at all.
 
 ## 4. Install, build, test, run
 
