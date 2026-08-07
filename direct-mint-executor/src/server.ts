@@ -21,6 +21,21 @@ export function createServer(executor: DirectMintExecutorLike, logger: MainnetCl
 async function handleRequest(req: IncomingMessage, res: ServerResponse, executor: DirectMintExecutorLike, logger: MainnetClientLogger): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost')
 
+  // This endpoint is called directly from the browser (SpectraTradePanel.tsx), which is always a
+  // different origin than the executor's own host - the browser needs an explicit CORS grant or
+  // the preflight fails before any of the routes below ever run. No cookies/session state are
+  // used here (every request is validated by hash + allow-list on content, not by caller
+  // identity), so a wildcard origin doesn't weaken anything this server actually protects.
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204)
+    res.end()
+    return
+  }
+
   if (req.method === 'GET' && url.pathname === '/health') {
     sendJson(res, 200, { ok: true })
     return

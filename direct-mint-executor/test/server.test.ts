@@ -84,6 +84,18 @@ describe('mainnet direct-mint HTTP server', () => {
     expect(await response.json()).toEqual({ ok: true })
   })
 
+  it('answers a CORS preflight OPTIONS request', async () => {
+    const response = await fetch(baseUrl, { method: 'OPTIONS' })
+    expect(response.status).toBe(204)
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('access-control-allow-methods')).toContain('POST')
+  })
+
+  it('sets Access-Control-Allow-Origin on every response, not just OPTIONS', async () => {
+    const response = await fetch(`${baseUrl}/health`)
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+  })
+
   it('GET /status with an unknown userOpHash returns 404', async () => {
     const response = await fetch(`${baseUrl}/status?userOpHash=0x${'00'.repeat(32)}`)
     expect(response.status).toBe(404)
