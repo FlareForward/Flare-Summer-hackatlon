@@ -1,0 +1,24 @@
+{
+  "name": "direct-mint-executor",
+  "version": "0.1.0",
+  "description": "Mainnet hash-committed direct-mint executor for the Spectra buy flow: watches XRPL for the matching payment, drives it through Flare's Data Connector, and executes the committed userOp via AssetManagerFXRP.executeDirectMintingWithData.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "serve": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.20.6",
+    "viem": "^2.40.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
