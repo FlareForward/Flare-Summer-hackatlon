@@ -329,6 +329,58 @@ export function SmartAccountPanel({ vault }: Props) {
     }
   }
 
+  /**
+   * Shared branching for every direct-mint call sequence: a single inline-memo XRPL payment when
+   * it fits, a single hash-committed payment via the executor when it doesn't and the executor is
+   * configured, or a fallback of one XRPL payment per call (multiple signatures) otherwise.
+   */
+  async function resolveDirectMintPayments(args: {
+    calls: FsaCall[];
+    account: Address;
+    nonce: bigint;
+    destination: string;
+    combinedPaymentDrops: string;
+    combinedLabel: string;
+    splitPaymentDropsFor: (call: FsaCall, index: number) => string;
+    splitLabelFor: (call: FsaCall, index: number) => string;
+  }): Promise<{ payments: DirectMintPayment[]; memoMode: DirectMintMode; packedUserOperation?: Hex; userOpHash?: Hex }> {
+    const inlineMemo = buildMemoFieldUserOp({ calls: args.calls, sender: args.account, nonce: args.nonce });
+    if (inlineMemo.length - 2 <= XRPL_MEMO_HEX_LIMIT) {
+      return {
+        payments: [{ memo: inlineMemo, paymentDrops: args.combinedPaymentDrops, mode: 'inline', label: args.combinedLabel }],
+        memoMode: 'inline',
+      };
+    }
+
+    if (DIRECT_MINT_EXECUTOR_URL) {
+      const committed = buildHashCommittedUserOp({ calls: args.calls, sender: args.account, nonce: args.nonce });
+      const payments: DirectMintPayment[] = [
+        { memo: committed.memo, paymentDrops: args.combinedPaymentDrops, mode: 'hash', label: args.combinedLabel },
+      ];
+      setStatus('Submitting the 0xFE committed UserOp to the executor before wallet signing...');
+      await submitHashCommittedUserOp({
+        memo: committed.memo,
+        packedUserOperation: committed.packedUserOperation,
+        userOpHash: committed.userOpHash,
+        sender: args.account,
+        nonce: args.nonce,
+        destination: args.destination,
+        amountDrops: payments[0].paymentDrops,
+      });
+      setStatus('Executor accepted the committed UserOp. Sign the compact 0xFE direct-mint payment.');
+      return { payments, memoMode: 'hash', packedUserOperation: committed.packedUserOperation, userOpHash: committed.userOpHash };
+    }
+
+    const payments: DirectMintPayment[] = args.calls.map((call, index) => {
+      const memo = buildMemoFieldUserOp({ calls: [call], sender: args.account, nonce: args.nonce + BigInt(index) });
+      if (memo.length - 2 > XRPL_MEMO_HEX_LIMIT) {
+        throw new Error(`${args.splitLabelFor(call, index)} exceeds XRPL's 1024-byte memo limit by itself. Configure NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL for this operation.`);
+      }
+      return { memo, paymentDrops: args.splitPaymentDropsFor(call, index), mode: 'split' as const, label: args.splitLabelFor(call, index) };
+    });
+    return { payments, memoMode: 'split' };
+  }
+
   async function signDirectMintWithDcent(payments: DirectMintPayment[], destination: string, account: string) {
     const signedTxids: string[] = [];
     let currentPaymentId = '';

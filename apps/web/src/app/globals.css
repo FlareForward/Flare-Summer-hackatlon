@@ -410,8 +410,125 @@ pre {
 .availability-chip { flex: none; border: 1px solid var(--line-strong); border-radius: 999px; padding: 7px 10px; color: var(--muted-strong); font-size: 11px; font-weight: 800; }
 
 .spectra-marketplace-panel,
+.spectra-portfolio-panel,
 .spectra-trade-panel {
   gap: 14px;
+}
+
+.spectra-portfolio-heading {
+  align-items: center;
+}
+
+.spectra-portfolio-heading button {
+  min-width: 94px;
+}
+
+.spectra-account-line,
+.spectra-portfolio-summary,
+.spectra-position-list {
+  display: grid;
+  gap: 8px;
+}
+
+.spectra-account-line {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.spectra-account-line span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+}
+
+.spectra-account-line strong {
+  color: var(--muted-strong);
+}
+
+.spectra-portfolio-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.spectra-portfolio-summary > div,
+.spectra-position-card,
+.spectra-execution-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 12px;
+}
+
+.spectra-portfolio-summary span,
+.spectra-position-card span,
+.spectra-execution-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.spectra-portfolio-summary strong,
+.spectra-position-card strong,
+.spectra-execution-card strong {
+  display: block;
+  margin-top: 6px;
+}
+
+.spectra-position-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.spectra-position-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(140px, 0.7fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.spectra-position-card p,
+.spectra-execution-card p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.spectra-position-card button {
+  min-width: 76px;
+}
+
+.spectra-execution-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-color: rgba(71, 182, 255, 0.34);
+  background: rgba(71, 182, 255, 0.06);
+}
+
+.spectra-execution-card.complete,
+.spectra-execution-card.flare_submitted {
+  border-color: rgba(91, 232, 181, 0.4);
+  background: rgba(91, 232, 181, 0.07);
+}
+
+.spectra-execution-card.error {
+  border-color: rgba(255, 91, 112, 0.42);
+  background: rgba(255, 91, 112, 0.07);
+}
+
+.spectra-execution-state {
+  display: grid;
+  flex: none;
+  gap: 5px;
+  justify-items: end;
+  text-align: right;
+}
+
+.spectra-execution-state a {
+  color: var(--blue);
+  font-size: 11px;
 }
 
 .spectra-market-list {
@@ -1510,6 +1627,8 @@ pre {
 
   .spectra-order-box,
   .spectra-suggestions,
+  .spectra-position-list,
+  .spectra-portfolio-summary,
   .compact-facts {
     grid-template-columns: 1fr;
   }
@@ -1529,5 +1648,9 @@ pre {
   .spectra-market-main,
   .spectra-market-actions,
   .trade-side-tabs { flex-direction: column; }
+  .spectra-account-line,
+  .spectra-position-card { grid-template-columns: 1fr; }
+  .spectra-execution-card { align-items: flex-start; flex-direction: column; }
+  .spectra-execution-state { justify-items: start; text-align: left; }
   .spectra-sign-button { justify-self: stretch; }
 }

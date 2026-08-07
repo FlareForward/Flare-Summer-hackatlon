@@ -11,6 +11,7 @@ This repository is the public hackathon submission surface. It includes the user
 - Submission checklist and demo script: [docs/SUBMISSION.md](docs/SUBMISSION.md)
 - Architecture notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Remaining work: [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)
+- Steer on SparkDEX plan: [docs/STEER_SPARKDEX_SMART_ACCOUNT_PLAN.md](docs/STEER_SPARKDEX_SMART_ACCOUNT_PLAN.md)
 
 ## Product
 

@@ -6,7 +6,7 @@ import {
   TooManyCallsError,
 } from '../src/mainnetErrors.js'
 import { UserOperationHashMismatchError, MintRecipientMismatchError, ExecutorTimeoutError } from '../src/errors.js'
-import { erc20ApproveAbi, spectraPoolAbi, stakedXrpDepositAbi } from '../src/abi.js'
+import { carryVaultDepositAbi, erc20ApproveAbi, spectraPoolAbi, stakedXrpDepositAbi } from '../src/abi.js'
 import { MainnetDirectMintExecutor } from '../src/executor.js'
 import type { DirectMintChainClient, DirectMintingProof, MintingProofResult } from '../src/fdcClient.js'
 import type { MainnetDirectMintConfig } from '../src/config.js'
@@ -16,6 +16,8 @@ const POOL = addressFromLabel('spectra-pool')
 const IBT = addressFromLabel('spectra-ibt')
 const SENDER = addressFromLabel('personal-account')
 const OTHER = addressFromLabel('someone-else')
+const LP_VAULT = addressFromLabel('concentrated-lp-vault')
+const CARRY_VAULT = addressFromLabel('carry-trade-vault')
 
 function addressFromLabel(label: string): Address {
   return getAddress(`0x${keccak256(stringToHex(label)).slice(-40)}`)
@@ -35,6 +37,14 @@ function exchangeCall(dx = 1000n, minDy = 1n): UserOperationCallInput {
 
 function validSpectraCalls(): UserOperationCallInput[] {
   return [approveCall(FXRP, IBT), depositCall(SENDER), approveCall(IBT, POOL), exchangeCall()]
+}
+
+function erc4626DepositCall(receiver: Address, assets = 1000n): UserOperationCallInput {
+  return { target: LP_VAULT, value: 0n, data: encodeFunctionData({ abi: stakedXrpDepositAbi, functionName: 'deposit', args: [assets, receiver] }) }
+}
+
+function carryDepositCall(assets = 1000n): UserOperationCallInput {
+  return { target: CARRY_VAULT, value: 0n, data: encodeFunctionData({ abi: carryVaultDepositAbi, functionName: 'deposit', args: [assets] }) }
 }
 
 function buildUserOp(calls: UserOperationCallInput[], nonce = 1n) {
@@ -79,6 +89,7 @@ function fixtureConfig(overrides: Partial<MainnetDirectMintConfig> = {}): Mainne
     maxAttempts: 3,
     pollIntervalMs: 1,
     httpPort: 8787,
+    knownVaults: new Map(),
     ...overrides,
   }
 }
@@ -161,6 +172,78 @@ describe('MainnetDirectMintExecutor.registerUserOperation allow-list', () => {
     const { userOpBytes, userOpHash } = buildUserOp(calls)
 
     await expect(executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: POOL })).rejects.toBeInstanceOf(CallNotAllowedError)
+  })
+})
+
+describe('MainnetDirectMintExecutor.registerUserOperation allow-list (erc4626 vault)', () => {
+  function fixtureConfigWithLpVault(overrides: Partial<MainnetDirectMintConfig> = {}): MainnetDirectMintConfig {
+    return fixtureConfig({ knownVaults: new Map([[LP_VAULT.toLowerCase(), 'erc4626']]), ...overrides })
+  }
+
+  it('registers a single-signature approve + deposit into a known erc4626 vault, with no ibt lookup', async () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfigWithLpVault(), logger: silentLogger })
+    const calls = [approveCall(FXRP, LP_VAULT), erc4626DepositCall(SENDER)]
+    const { userOpBytes, userOpHash } = buildUserOp(calls)
+
+    const record = await executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: LP_VAULT })
+
+    expect(record.state).toBe('registered')
+    expect(record.calls).toHaveLength(2)
+  })
+
+  it('rejects a deposit whose receiver is not the registered PersonalAccount', async () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfigWithLpVault(), logger: silentLogger })
+    const calls = [erc4626DepositCall(OTHER)]
+    const { userOpBytes, userOpHash } = buildUserOp(calls)
+
+    await expect(executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: LP_VAULT })).rejects.toBeInstanceOf(CallNotAllowedError)
+  })
+
+  it('rejects a call targeting a contract outside FXRP/the declared vault', async () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfigWithLpVault(), logger: silentLogger })
+    const calls = [approveCall(FXRP, OTHER)]
+    const { userOpBytes, userOpHash } = buildUserOp(calls)
+
+    await expect(executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: LP_VAULT })).rejects.toBeInstanceOf(CallNotAllowedError)
+  })
+})
+
+describe('MainnetDirectMintExecutor.registerUserOperation allow-list (carry vault)', () => {
+  function fixtureConfigWithCarryVault(overrides: Partial<MainnetDirectMintConfig> = {}): MainnetDirectMintConfig {
+    return fixtureConfig({ knownVaults: new Map([[CARRY_VAULT.toLowerCase(), 'carry']]), ...overrides })
+  }
+
+  it('registers a single-signature approve + deposit into a known carry vault (single-arg deposit)', async () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfigWithCarryVault(), logger: silentLogger })
+    const calls = [approveCall(FXRP, CARRY_VAULT), carryDepositCall()]
+    const { userOpBytes, userOpHash } = buildUserOp(calls)
+
+    const record = await executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: CARRY_VAULT })
+
+    expect(record.state).toBe('registered')
+    expect(record.calls).toHaveLength(2)
+  })
+
+  it('rejects calldata that does not decode as approve/deposit for the carry vault', async () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfigWithCarryVault(), logger: silentLogger })
+    const calls = [exchangeCall()]
+    const { userOpBytes, userOpHash } = buildUserOp(calls)
+
+    await expect(executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: CARRY_VAULT })).rejects.toBeInstanceOf(CallNotAllowedError)
+  })
+
+  it('rejects a call targeting a contract outside FXRP/the declared vault', async () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfigWithCarryVault(), logger: silentLogger })
+    const calls = [approveCall(FXRP, OTHER)]
+    const { userOpBytes, userOpHash } = buildUserOp(calls)
+
+    await expect(executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: CARRY_VAULT })).rejects.toBeInstanceOf(CallNotAllowedError)
   })
 })
 

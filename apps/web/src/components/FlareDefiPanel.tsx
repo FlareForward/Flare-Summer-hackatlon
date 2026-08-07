@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { formatUnits } from 'viem';
 import { SpectraMarketList } from '@/components/SpectraMarketList';
+import { SpectraPortfolio } from '@/components/SpectraPortfolio';
 import { SpectraTradePanel } from '@/components/SpectraTradePanel';
 import type { SpectraMarket } from '@/lib/spectra/markets';
 
@@ -8,6 +10,7 @@ export function FlareDefiPanel() {
   const [selectedMarket, setSelectedMarket] = useState<SpectraMarket | undefined>();
   const [loadingMarkets, setLoadingMarkets] = useState(true);
   const [marketError, setMarketError] = useState('');
+  const [tradeIntent, setTradeIntent] = useState<{ id: number; side: 'buy' | 'sell'; amount?: string }>();
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +64,15 @@ export function FlareDefiPanel() {
         <span>Listed protocols are live on Flare and have published audits. Those audits apply to the respective protocol contracts, not to this interface or your transaction choices.</span>
       </aside>
 
+      <SpectraPortfolio
+        markets={markets}
+        onSell={(market, balance) => {
+          setSelectedMarket(market);
+          setTradeIntent({ id: Date.now(), side: 'sell', amount: formatUnits(balance, market.decimals) });
+          window.setTimeout(() => document.querySelector('.spectra-trade-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+        }}
+      />
+
       <section className="strategy-panel panel defi-marketplace">
         <div className="section-heading">
           <div><p className="eyebrow">Protocol marketplace</p><h2>Choose what you want to do</h2></div>
@@ -107,7 +119,7 @@ export function FlareDefiPanel() {
         <SpectraMarketList markets={markets} selectedPool={selectedMarket?.pool} onSelect={setSelectedMarket} />
       </section>
 
-      <SpectraTradePanel market={selectedMarket} />
+      <SpectraTradePanel market={selectedMarket} intent={tradeIntent} />
     </>
   );
 }

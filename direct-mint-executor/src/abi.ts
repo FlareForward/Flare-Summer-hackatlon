@@ -157,6 +157,17 @@ export const stakedXrpDepositAbi = [
   },
 ] as const
 
+/** CarryTradeVaultV2.deposit(uint256 assets) — single-arg, mints shares to msg.sender. */
+export const carryVaultDepositAbi = [
+  {
+    type: 'function',
+    name: 'deposit',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'assets', type: 'uint256' }],
+    outputs: [{ name: 'shares', type: 'uint256' }],
+  },
+] as const
+
 export const spectraPoolAbi = [
   {
     type: 'function',

@@ -14,7 +14,7 @@ import {
   XrplRailError,
 } from './errors.js'
 import { CallNotAllowedError, TooManyCallsError } from './mainnetErrors.js'
-import { erc20ApproveAbi, spectraPoolAbi, stakedXrpDepositAbi } from './abi.js'
+import { carryVaultDepositAbi, erc20ApproveAbi, spectraPoolAbi, stakedXrpDepositAbi } from './abi.js'
 import type { DirectMintChainClient, MainnetClientLogger } from './fdcClient.js'
 import type { MainnetDirectMintConfig } from './config.js'
 
@@ -53,7 +53,9 @@ export interface DirectMintExecutorLike {
 }
 
 const MAX_CALLS = 4
-const combinedAllowedAbi = [...erc20ApproveAbi, ...stakedXrpDepositAbi, ...spectraPoolAbi] as const
+const spectraAllowedAbi = [...erc20ApproveAbi, ...stakedXrpDepositAbi, ...spectraPoolAbi] as const
+const erc4626VaultAllowedAbi = [...erc20ApproveAbi, ...stakedXrpDepositAbi] as const
+const carryVaultAllowedAbi = [...erc20ApproveAbi, ...carryVaultDepositAbi] as const
 const silentLogger: MainnetClientLogger = { info() {}, error() {} }
 
 export class MainnetDirectMintExecutor implements DirectMintExecutorLike {
@@ -166,20 +168,38 @@ export class MainnetDirectMintExecutor implements DirectMintExecutorLike {
       throw new TooManyCallsError(calls.length, MAX_CALLS)
     }
 
-    const ibt = await this.client.resolvePoolIbt(declaredVault)
-    const allowedTargets = new Set([this.config.fxrpToken.toLowerCase(), declaredVault.toLowerCase(), ibt.toLowerCase()])
+    const knownVaultKind = this.config.knownVaults.get(declaredVault.toLowerCase())
+
+    let allowedTargets: Set<string>
+    let allowedAbi: typeof spectraAllowedAbi | typeof erc4626VaultAllowedAbi | typeof carryVaultAllowedAbi
+    let checkDepositReceiver: boolean
+
+    if (knownVaultKind === 'erc4626') {
+      allowedTargets = new Set([this.config.fxrpToken.toLowerCase(), declaredVault.toLowerCase()])
+      allowedAbi = erc4626VaultAllowedAbi
+      checkDepositReceiver = true
+    } else if (knownVaultKind === 'carry') {
+      allowedTargets = new Set([this.config.fxrpToken.toLowerCase(), declaredVault.toLowerCase()])
+      allowedAbi = carryVaultAllowedAbi
+      checkDepositReceiver = false
+    } else {
+      const ibt = await this.client.resolvePoolIbt(declaredVault)
+      allowedTargets = new Set([this.config.fxrpToken.toLowerCase(), declaredVault.toLowerCase(), ibt.toLowerCase()])
+      allowedAbi = spectraAllowedAbi
+      checkDepositReceiver = true
+    }
 
     calls.forEach((call, index) => {
       if (call.value !== 0n) {
-        throw new CallNotAllowedError(index, 'non-zero call value is not allowed for the Spectra direct-mint flow')
+        throw new CallNotAllowedError(index, 'non-zero call value is not allowed for the direct-mint flow')
       }
       if (!allowedTargets.has(call.target.toLowerCase())) {
-        throw new CallNotAllowedError(index, `target ${call.target} is not FXRP, the declared pool, or the pool's ibt`)
+        throw new CallNotAllowedError(index, `target ${call.target} is not an allow-listed target for this vault`)
       }
 
       let decoded
       try {
-        decoded = decodeFunctionData({ abi: combinedAllowedAbi, data: call.data })
+        decoded = decodeFunctionData({ abi: allowedAbi, data: call.data })
       } catch {
         throw new CallNotAllowedError(index, 'calldata does not match approve/deposit/exchange')
       }
@@ -190,7 +210,7 @@ export class MainnetDirectMintExecutor implements DirectMintExecutorLike {
           throw new CallNotAllowedError(index, `approve spender ${spender} is not an allow-listed target`)
         }
       }
-      if (decoded.functionName === 'deposit') {
+      if (decoded.functionName === 'deposit' && checkDepositReceiver) {
         const [, receiver] = decoded.args as [bigint, Address]
         if (receiver.toLowerCase() !== personalAccount.toLowerCase()) {
           throw new CallNotAllowedError(index, `deposit receiver ${receiver} is not the registered PersonalAccount`)

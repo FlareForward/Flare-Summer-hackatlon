@@ -4,6 +4,9 @@ import { InvalidInputError } from './errors.js'
 /** Flare mainnet chain id. This package only ever targets mainnet. */
 export const FLARE_MAINNET_CHAIN_ID = 14
 
+/** Vault kinds the executor can allow-list calls for, beyond the default Spectra pool flow. */
+export type KnownVaultKind = 'erc4626' | 'carry'
+
 export interface MainnetDirectMintConfig {
   rpcUrl: string
   flareContractRegistry: Address
@@ -20,6 +23,8 @@ export interface MainnetDirectMintConfig {
   maxAttempts: number
   pollIntervalMs: number
   httpPort: number
+  /** Lowercased vault address -> kind. Populated from DIRECT_MINT_ERC4626_VAULTS / DIRECT_MINT_CARRY_VAULTS. */
+  knownVaults: Map<string, KnownVaultKind>
 }
 
 const DEFAULTS = {
@@ -55,6 +60,23 @@ export function readMainnetConfigFromEnv(env: NodeJS.ProcessEnv = process.env): 
     pollIntervalMs: readPositiveInteger(env.DIRECT_MINT_POLL_INTERVAL_MS ?? DEFAULTS.pollIntervalMs, 'DIRECT_MINT_POLL_INTERVAL_MS'),
     // Railway (and most PaaS hosts) inject PORT and expect the app to bind to it.
     httpPort: readPositiveInteger(env.DIRECT_MINT_HTTP_PORT ?? env.PORT ?? DEFAULTS.httpPort, 'DIRECT_MINT_HTTP_PORT'),
+    knownVaults: readKnownVaults(env),
+  }
+}
+
+function readKnownVaults(env: NodeJS.ProcessEnv): Map<string, KnownVaultKind> {
+  const vaults = new Map<string, KnownVaultKind>()
+  addKnownVaults(vaults, env.DIRECT_MINT_ERC4626_VAULTS, 'erc4626', 'DIRECT_MINT_ERC4626_VAULTS')
+  addKnownVaults(vaults, env.DIRECT_MINT_CARRY_VAULTS, 'carry', 'DIRECT_MINT_CARRY_VAULTS')
+  return vaults
+}
+
+function addKnownVaults(vaults: Map<string, KnownVaultKind>, raw: string | undefined, kind: KnownVaultKind, field: string): void {
+  if (!raw?.trim()) return
+  for (const entry of raw.split(',')) {
+    const trimmed = entry.trim()
+    if (!trimmed) continue
+    vaults.set(readAddress(trimmed, field).toLowerCase(), kind)
   }
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { getAddress } from 'viem'
 import { readMainnetConfigFromEnv } from '../src/config.js'
 
 const requiredEnv = {
@@ -17,5 +18,22 @@ describe('readMainnetConfigFromEnv', () => {
   it('rejects a documentation placeholder instead of accepting customer requests', () => {
     expect(() => readMainnetConfigFromEnv({ ...requiredEnv, FLARE_RPC_URL: '<your Flare mainnet RPC>' }))
       .toThrow('FLARE_RPC_URL')
+  })
+
+  it('defaults to an empty known-vault registry when the vault env vars are unset', () => {
+    expect(readMainnetConfigFromEnv(requiredEnv).knownVaults.size).toBe(0)
+  })
+
+  it('parses comma-separated erc4626 and carry vault addresses into the known-vault registry', () => {
+    const lpVault = getAddress('0xadb3f75c01eda514d476998f96523c1031dda25b')
+    const carryVault = getAddress('0x92613ec8058fbf6991f176a48cba2e2e7d8ba60c')
+    const config = readMainnetConfigFromEnv({
+      ...requiredEnv,
+      DIRECT_MINT_ERC4626_VAULTS: lpVault,
+      DIRECT_MINT_CARRY_VAULTS: ` ${carryVault} `,
+    })
+
+    expect(config.knownVaults.get(lpVault.toLowerCase())).toBe('erc4626')
+    expect(config.knownVaults.get(carryVault.toLowerCase())).toBe('carry')
   })
 })
