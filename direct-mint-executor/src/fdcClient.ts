@@ -20,7 +20,7 @@ import {
   spectraPoolAbi,
 } from './abi.js'
 import { FLARE_MAINNET_CHAIN_ID, type MainnetDirectMintConfig } from './config.js'
-import { ExecutorClientFailureError } from './errors.js'
+import { AttestedMemoMismatchError, ExecutorClientFailureError } from './errors.js'
 import { findXrplPaymentByUserOpHash } from './xrplWatcher.js'
 
 export interface DirectMintingProof {
@@ -188,7 +188,7 @@ export class MainnetDirectMintClient implements DirectMintChainClient {
 
     const attestedTail = extractHashTail(daResult.data.responseBody.firstMemoData)
     if (attestedTail !== key.slice(2)) {
-      throw new ExecutorClientFailureError('findMintingProof', new Error('attested memo does not match registered userOpHash'))
+      throw new AttestedMemoMismatchError(input.userOpHash)
     }
 
     const recipient = await this.resolvePersonalAccount(daResult.data.responseBody.sourceAddress)

@@ -63,6 +63,52 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, executor
     return
   }
 
+  if (req.method === 'POST' && url.pathname === '/retry') {
+    let retryBody: unknown
+    try {
+      retryBody = await readJsonBody(req)
+    } catch (error) {
+      sendJson(res, 400, { ok: false, code: 'INVALID_INPUT', field: 'body', message: messageOf(error) })
+      return
+    }
+    if (!isRecord(retryBody)) {
+      sendJson(res, 400, { ok: false, code: 'INVALID_INPUT', field: 'body', message: 'request body must be a JSON object' })
+      return
+    }
+
+    let retryUserOpHash: Hex
+    try {
+      retryUserOpHash = readHex(retryBody, 'userOpHash')
+      if (hexByteLength(retryUserOpHash) !== 32) throw new Error('userOpHash must be 32 bytes')
+    } catch (error) {
+      sendJson(res, 400, { ok: false, code: 'INVALID_INPUT', message: messageOf(error) })
+      return
+    }
+
+    let retryRecord
+    try {
+      retryRecord = executor.retry(retryUserOpHash)
+    } catch (error) {
+      const typed = error instanceof XrplRailError ? error : undefined
+      sendJson(res, typed?.code === 'USER_OP_NOT_REGISTERED' ? 404 : 400, {
+        ok: false,
+        code: typed?.code ?? 'INVALID_INPUT',
+        message: messageOf(error),
+      })
+      return
+    }
+
+    sendJson(res, 200, { ok: true, userOpHash: retryRecord.userOpHash, state: retryRecord.state })
+
+    if (retryRecord.state === 'registered') {
+      // Fire-and-forget, same pattern as the initial registration below.
+      executor.runUntilSubmitted(retryRecord.userOpHash).catch((error) => {
+        logger.error('[direct-mint] runUntilSubmitted threw (retry)', { message: messageOf(error), userOpHash: retryRecord.userOpHash })
+      })
+    }
+    return
+  }
+
   if (req.method !== 'POST' || url.pathname !== '/') {
     sendJson(res, 404, { ok: false, code: 'NOT_FOUND', message: 'unknown route' })
     return

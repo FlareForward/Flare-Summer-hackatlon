@@ -5,7 +5,7 @@ import {
   CallNotAllowedError,
   TooManyCallsError,
 } from '../src/mainnetErrors.js'
-import { UserOperationHashMismatchError, MintRecipientMismatchError, ExecutorTimeoutError } from '../src/errors.js'
+import { UserOperationHashMismatchError, MintRecipientMismatchError, ExecutorTimeoutError, AttestedMemoMismatchError, UserOperationNotRegisteredError } from '../src/errors.js'
 import { carryVaultDepositAbi, erc20ApproveAbi, spectraPoolAbi, stakedXrpDepositAbi } from '../src/abi.js'
 import { MainnetDirectMintExecutor } from '../src/executor.js'
 import type { DirectMintChainClient, DirectMintingProof, MintingProofResult } from '../src/fdcClient.js'
@@ -57,6 +57,9 @@ class FakeClient implements DirectMintChainClient {
   observation: MintingProofResult | null = null
   submittedTxHash: Hex = ('0x' + 'aa'.repeat(32)) as Hex
   findMintingProofCalls = 0
+  /** When set, findMintingProof throws this instead of returning. Cleared automatically after `throwTimes` calls (default: every call). */
+  findMintingProofError: Error | null = null
+  throwTimes = Infinity
 
   async resolvePoolIbt(): Promise<Address> {
     return this.ibt
@@ -64,6 +67,9 @@ class FakeClient implements DirectMintChainClient {
 
   async findMintingProof(): Promise<MintingProofResult | null> {
     this.findMintingProofCalls += 1
+    if (this.findMintingProofError && this.findMintingProofCalls <= this.throwTimes) {
+      throw this.findMintingProofError
+    }
     return this.observation
   }
 
@@ -247,37 +253,37 @@ describe('MainnetDirectMintExecutor.registerUserOperation allow-list (carry vaul
   })
 })
 
-describe('MainnetDirectMintExecutor poll/submit state machine', () => {
-  function fixtureProof(): DirectMintingProof {
-    return {
-      merkleProof: [],
-      data: {
-        attestationType: `0x${'00'.repeat(32)}` as Hex,
-        sourceId: `0x${'00'.repeat(32)}` as Hex,
-        votingRound: 1n,
-        lowestUsedTimestamp: 1n,
-        requestBody: { transactionId: `0x${'00'.repeat(32)}` as Hex, proofOwner: OTHER },
-        responseBody: {
-          blockNumber: 1n,
-          blockTimestamp: 1n,
-          sourceAddress: 'rSourceAccount',
-          sourceAddressHash: `0x${'00'.repeat(32)}` as Hex,
-          receivingAddressHash: `0x${'00'.repeat(32)}` as Hex,
-          intendedReceivingAddressHash: `0x${'00'.repeat(32)}` as Hex,
-          spentAmount: 1n,
-          intendedSpentAmount: 1n,
-          receivedAmount: 1n,
-          intendedReceivedAmount: 1n,
-          hasMemoData: true,
-          firstMemoData: '0x' as Hex,
-          hasDestinationTag: false,
-          destinationTag: 0n,
-          status: 0,
-        },
+function fixtureProof(): DirectMintingProof {
+  return {
+    merkleProof: [],
+    data: {
+      attestationType: `0x${'00'.repeat(32)}` as Hex,
+      sourceId: `0x${'00'.repeat(32)}` as Hex,
+      votingRound: 1n,
+      lowestUsedTimestamp: 1n,
+      requestBody: { transactionId: `0x${'00'.repeat(32)}` as Hex, proofOwner: OTHER },
+      responseBody: {
+        blockNumber: 1n,
+        blockTimestamp: 1n,
+        sourceAddress: 'rSourceAccount',
+        sourceAddressHash: `0x${'00'.repeat(32)}` as Hex,
+        receivingAddressHash: `0x${'00'.repeat(32)}` as Hex,
+        intendedReceivingAddressHash: `0x${'00'.repeat(32)}` as Hex,
+        spentAmount: 1n,
+        intendedSpentAmount: 1n,
+        receivedAmount: 1n,
+        intendedReceivedAmount: 1n,
+        hasMemoData: true,
+        firstMemoData: '0x' as Hex,
+        hasDestinationTag: false,
+        destinationTag: 0n,
+        status: 0,
       },
-    }
+    },
   }
+}
 
+describe('MainnetDirectMintExecutor poll/submit state machine', () => {
   it('submits once a matching, recipient-correct proof is observed', async () => {
     const client = new FakeClient()
     const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfig(), logger: silentLogger })
@@ -326,5 +332,83 @@ describe('MainnetDirectMintExecutor poll/submit state machine', () => {
     expect(record.state).toBe('error')
     expect(record.error).toBeInstanceOf(ExecutorTimeoutError)
     expect(client.findMintingProofCalls).toBe(2)
+  })
+
+  it('keeps polling (stays registered) instead of failing immediately on a transient findMintingProof error', async () => {
+    const client = new FakeClient()
+    client.findMintingProofError = new Error('account_tx request failed with HTTP 402')
+    client.throwTimes = 2
+    client.observation = { paymentId: 'txid-1', recipient: SENDER, proof: fixtureProof() }
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfig({ maxAttempts: 5, pollIntervalMs: 1 }), logger: silentLogger })
+    const { userOpBytes, userOpHash } = buildUserOp(validSpectraCalls())
+    await executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: POOL })
+
+    const record = await executor.runUntilSubmitted(userOpHash)
+
+    expect(record.state).toBe('submitted')
+    expect(client.findMintingProofCalls).toBe(3)
+  })
+
+  it('eventually times out (not a permanent error) if findMintingProof keeps failing transiently', async () => {
+    const client = new FakeClient()
+    client.findMintingProofError = new Error('account_tx request failed with HTTP 402')
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfig({ maxAttempts: 2, pollIntervalMs: 1 }), logger: silentLogger })
+    const { userOpBytes, userOpHash } = buildUserOp(validSpectraCalls())
+    await executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: POOL })
+
+    const record = await executor.runUntilSubmitted(userOpHash)
+
+    expect(record.state).toBe('error')
+    expect(record.error).toBeInstanceOf(ExecutorTimeoutError)
+    expect(client.findMintingProofCalls).toBe(2)
+  })
+
+  it('fails immediately (does not retry) on an attested-memo mismatch, since that is a real correctness violation', async () => {
+    const client = new FakeClient()
+    client.findMintingProofError = new AttestedMemoMismatchError(`0x${'11'.repeat(32)}`)
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfig({ maxAttempts: 5, pollIntervalMs: 1 }), logger: silentLogger })
+    const { userOpBytes, userOpHash } = buildUserOp(validSpectraCalls())
+    await executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: POOL })
+
+    const record = await executor.runUntilSubmitted(userOpHash)
+
+    expect(record.state).toBe('error')
+    expect(record.error).toBeInstanceOf(AttestedMemoMismatchError)
+    expect(client.findMintingProofCalls).toBe(1)
+  })
+})
+
+describe('MainnetDirectMintExecutor.retry', () => {
+  it('resurrects an errored record back to registered, clearing the stored error', async () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfig({ maxAttempts: 1, pollIntervalMs: 1 }), logger: silentLogger })
+    const { userOpBytes, userOpHash } = buildUserOp(validSpectraCalls())
+    await executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: POOL })
+    const errored = await executor.runUntilSubmitted(userOpHash)
+    expect(errored.state).toBe('error')
+
+    const retried = executor.retry(userOpHash)
+    expect(retried.state).toBe('registered')
+    expect(retried.error).toBeUndefined()
+
+    client.observation = { paymentId: 'txid-1', recipient: SENDER, proof: fixtureProof() }
+    const resumed = await executor.runUntilSubmitted(userOpHash)
+    expect(resumed.state).toBe('submitted')
+  })
+
+  it('is a no-op for a record that is not in error state', async () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfig(), logger: silentLogger })
+    const { userOpBytes, userOpHash } = buildUserOp(validSpectraCalls())
+    await executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: POOL })
+
+    const retried = executor.retry(userOpHash)
+    expect(retried.state).toBe('registered')
+  })
+
+  it('throws for an unknown userOpHash', () => {
+    const client = new FakeClient()
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfig(), logger: silentLogger })
+    expect(() => executor.retry(`0x${'22'.repeat(32)}`)).toThrow(UserOperationNotRegisteredError)
   })
 })

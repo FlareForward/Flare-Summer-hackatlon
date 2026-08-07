@@ -113,6 +113,22 @@ returns `{ ok, state, attempts, sender, txHash, error }`. `state` moves `registe
 `submitted` (success) or `registered` → `error` (see `error.code`/`error.message`). Server logs
 also print each stage: XRPL payment observed, FDC fee paid + round id, submission tx hash.
 
+Transient failures while polling (XRPL RPC hiccups, FDC verifier/DA layer transport errors) are
+retried automatically up to `DIRECT_MINT_MAX_ATTEMPTS` - they don't move the record to `error`.
+Only a genuine correctness failure (`MINT_RECIPIENT_MISMATCH`, `ATTESTED_MEMO_MISMATCH`) or
+exhausting all attempts (`EXECUTOR_TIMEOUT`) ends in `error`.
+
+If a userOp still lands in `error` (e.g. the RPC endpoint was down for the entire attempt window,
+or the same process later recovers), you don't need the original XRPL payment resent - the
+executor already has the validated calls in memory. Resurrect it and resume polling with:
+
+```bash
+curl -X POST "https://<host>/retry" -H "Content-Type: application/json" -d '{"userOpHash":"0x..."}'
+```
+
+This only works against the same running process that registered the userOp - if the service has
+restarted since, the record is gone and the deposit has to be resubmitted from the frontend.
+
 ## Safety notes
 
 - **Allow-list is closed by construction.** `MainnetDirectMintExecutor.registerUserOperation`

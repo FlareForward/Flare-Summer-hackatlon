@@ -7,6 +7,7 @@ import {
   type UserOperationCall,
 } from './memoBuilder.js'
 import {
+  AttestedMemoMismatchError,
   ExecutorClientFailureError,
   ExecutorTimeoutError,
   MintRecipientMismatchError,
@@ -50,6 +51,7 @@ export interface DirectMintExecutorLike {
   registerUserOperation(input: RegisterMainnetUserOperationInput): Promise<MainnetExecutorRecord>
   getRecord(userOpHash: Hex): MainnetExecutorRecord | undefined
   runUntilSubmitted(userOpHash: Hex): Promise<MainnetExecutorRecord>
+  retry(userOpHash: Hex): MainnetExecutorRecord
 }
 
 const MAX_CALLS = 4
@@ -113,7 +115,21 @@ export class MainnetDirectMintExecutor implements DirectMintExecutorLike {
     try {
       observation = await this.client.findMintingProof({ userOpHash: record.userOpHash })
     } catch (error) {
-      return this.fail(record, wrapError('findMintingProof', error))
+      const wrapped = wrapError('findMintingProof', error)
+      // An attested-memo mismatch is a real correctness violation - retrying will not resolve it.
+      // Everything else here (XRPL RPC hiccups, FDC verifier/DA layer transport failures) is the
+      // same category as "haven't observed the payment yet": transient, so keep polling instead of
+      // permanently stranding a userOp on a one-off network blip. runUntilSubmitted's maxAttempts
+      // loop already bounds how long this can retry before timing out.
+      if (wrapped instanceof AttestedMemoMismatchError) {
+        return this.fail(record, wrapped)
+      }
+      this.logger.error('[direct-mint] transient error while polling for XRPL payment/FDC proof, will retry', {
+        userOpHash: record.userOpHash,
+        attempts: record.attempts,
+        message: wrapped.message,
+      })
+      return cloneRecord(record)
     }
 
     if (!observation) {
@@ -161,6 +177,23 @@ export class MainnetDirectMintExecutor implements DirectMintExecutorLike {
 
     const record = this.requireRecord(userOpHash)
     return this.fail(record, new ExecutorTimeoutError(record.userOpHash, this.config.maxAttempts))
+  }
+
+  /**
+   * Resurrects a userOp that previously ended in a (typically transient) error state, without
+   * requiring the caller to resend the original calls or XRPL payment - the already-validated
+   * userOpBytes/calls stay in memory from registration. No-ops if the record isn't in `error`.
+   * Callers should re-invoke runUntilSubmitted afterward to resume polling.
+   */
+  retry(userOpHash: Hex): MainnetExecutorRecord {
+    const record = this.requireRecord(userOpHash)
+    if (record.state === 'error') {
+      record.state = 'registered'
+      record.error = undefined
+      this.records.set(record.userOpHash.toLowerCase(), record)
+      this.logger.info('[direct-mint] retrying errored userOp', { userOpHash: record.userOpHash })
+    }
+    return cloneRecord(record)
   }
 
   private async assertCallsAreAllowed(calls: UserOperationCall[], declaredVault: Address, personalAccount: Address): Promise<void> {

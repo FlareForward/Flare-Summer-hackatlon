@@ -8,6 +8,7 @@ export type XrplRailErrorCode =
   | 'MISSING_FDC_PROOF'
   | 'EXECUTOR_CLIENT_FAILURE'
   | 'EXECUTOR_TIMEOUT'
+  | 'ATTESTED_MEMO_MISMATCH'
 
 export interface XrplRailErrorOptions {
   code: XrplRailErrorCode
@@ -89,6 +90,20 @@ export class MissingFdcProofError extends XrplRailError {
     super(`[xrpl-rail] FDC payment proof is unavailable for ${userOpHash}`, {
       code: 'MISSING_FDC_PROOF',
       field: 'proof',
+    })
+  }
+}
+
+/**
+ * The FDC-attested payment memo doesn't tail-match the userOpHash we registered. This is a real
+ * correctness violation, not a flaky RPC/network blip - unlike other findMintingProof failures,
+ * it will not resolve itself on retry, so callers should treat it as terminal.
+ */
+export class AttestedMemoMismatchError extends XrplRailError {
+  constructor(userOpHash: string) {
+    super(`[xrpl-rail] attested memo does not match registered userOpHash: ${userOpHash}`, {
+      code: 'ATTESTED_MEMO_MISMATCH',
+      field: 'userOpHash',
     })
   }
 }

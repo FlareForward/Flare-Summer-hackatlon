@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { getAddress, keccak256, stringToHex, type Hex } from 'viem'
 import { createServer } from '../src/server.js'
 import { CallNotAllowedError } from '../src/mainnetErrors.js'
+import { UserOperationNotRegisteredError } from '../src/errors.js'
 import type { DirectMintExecutorLike, MainnetExecutorRecord, RegisterMainnetUserOperationInput } from '../src/executor.js'
 
 const SENDER = getAddress(`0x${keccak256(stringToHex('personal-account')).slice(-40)}`)
@@ -12,6 +13,7 @@ const silentLogger = { info() {}, error() {} }
 class FakeExecutor implements DirectMintExecutorLike {
   registerCalls: RegisterMainnetUserOperationInput[] = []
   runUntilSubmittedCalls: Hex[] = []
+  retryCalls: Hex[] = []
   registerImpl: (input: RegisterMainnetUserOperationInput) => Promise<MainnetExecutorRecord> = async (input) => baseRecord(input)
   records = new Map<string, MainnetExecutorRecord>()
 
@@ -30,6 +32,17 @@ class FakeExecutor implements DirectMintExecutorLike {
     this.runUntilSubmittedCalls.push(userOpHash)
     const record = this.records.get(userOpHash.toLowerCase())
     if (!record) throw new Error('not registered')
+    return record
+  }
+
+  retry(userOpHash: Hex): MainnetExecutorRecord {
+    this.retryCalls.push(userOpHash)
+    const record = this.records.get(userOpHash.toLowerCase())
+    if (!record) throw new UserOperationNotRegisteredError(userOpHash)
+    if (record.state === 'error') {
+      record.state = 'registered'
+      record.error = undefined
+    }
     return record
   }
 }
@@ -170,5 +183,46 @@ describe('mainnet direct-mint HTTP server', () => {
     const json = await response.json()
     expect(json.state).toBe('registered')
     expect(json.sender).toBe(SENDER)
+  })
+
+  it('POST /retry with an unknown userOpHash returns 404', async () => {
+    const response = await fetch(`${baseUrl}/retry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userOpHash: `0x${'00'.repeat(32)}` }),
+    })
+    expect(response.status).toBe(404)
+  })
+
+  it('POST /retry with a malformed body returns 400', async () => {
+    const response = await fetch(`${baseUrl}/retry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notUserOpHash: 'x' }),
+    })
+    expect(response.status).toBe(400)
+  })
+
+  it('POST /retry resurrects an errored record and kicks off background polling again, without needing the original calls resent', async () => {
+    const body = validBody()
+    executor.records.set(body.userOpHash.toLowerCase(), {
+      ...baseRecord(body as unknown as RegisterMainnetUserOperationInput),
+      state: 'error',
+      attempts: 1,
+    })
+
+    const response = await fetch(`${baseUrl}/retry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userOpHash: body.userOpHash }),
+    })
+    expect(response.status).toBe(200)
+    const json = await response.json()
+    expect(json.ok).toBe(true)
+    expect(json.state).toBe('registered')
+    expect(executor.retryCalls).toEqual([body.userOpHash])
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(executor.runUntilSubmittedCalls).toContain(body.userOpHash)
   })
 })
