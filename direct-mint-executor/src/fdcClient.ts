@@ -170,6 +170,10 @@ export class MainnetDirectMintClient implements DirectMintChainClient {
       this.logger.info('[direct-mint] observed matching XRPL payment', { txHash: match.txHash, userOpHash: input.userOpHash })
 
       const abiEncodedRequest = await this.prepareVerifierRequest(match.txHash)
+      // XRPL RPC nodes and the FDC verifier do not always index a newly validated transaction at
+      // the same time. Keep the job registered and retry instead of permanently stranding a
+      // payment that the XRPL watcher has already confirmed.
+      if (!abiEncodedRequest) return null
       state = { abiEncodedRequest, txHash: match.txHash }
       this.requestState.set(key, state)
     }
@@ -222,7 +226,7 @@ export class MainnetDirectMintClient implements DirectMintChainClient {
     })
   }
 
-  private async prepareVerifierRequest(txId: string): Promise<Hex> {
+  private async prepareVerifierRequest(txId: string): Promise<Hex | null> {
     const url = buildVerifierRequestUrl(this.config.fdcVerifierBaseUrl, this.config.fdcAttestationType)
     const body = buildVerifierRequestBody({
       txId,
@@ -236,6 +240,10 @@ export class MainnetDirectMintClient implements DirectMintChainClient {
       body: JSON.stringify(body),
     })
     const json = (await response.json().catch(() => null)) as { status?: string, abiEncodedRequest?: Hex } | null
+    if (response.ok && isVerifierTransactionPending(json)) {
+      this.logger.info('[direct-mint] verifier has not indexed XRPL transaction yet; retrying', { txHash: txId })
+      return null
+    }
     if (!response.ok || json?.status !== 'VALID' || !json.abiEncodedRequest) {
       throw new ExecutorClientFailureError('prepareVerifierRequest', new Error(`verifier rejected request: HTTP ${response.status} ${JSON.stringify(json)}`))
     }
@@ -285,6 +293,11 @@ export class MainnetDirectMintClient implements DirectMintChainClient {
     const json = (await response.json().catch(() => null)) as DaLayerResponse | null
     return parseDaLayerProofResponse(json)
   }
+}
+
+/** The verifier can lag a validated XRPL node briefly; this response is not a terminal failure. */
+export function isVerifierTransactionPending(json: { status?: string } | null): boolean {
+  return json?.status?.toUpperCase().includes('TRANSACTION DOES NOT EXIST') ?? false
 }
 
 /** Exported for unit testing without spinning up a viem client - pure URL construction. */

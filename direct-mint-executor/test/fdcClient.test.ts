@@ -5,6 +5,7 @@ import {
   buildVerifierRequestBody,
   buildVerifierRequestUrl,
   extractHashTail,
+  isVerifierTransactionPending,
   parseDaLayerProofResponse,
   type DaLayerResponse,
 } from '../src/fdcClient.js'
@@ -54,6 +55,17 @@ describe('buildVerifierRequestBody', () => {
       sourceId: 'XRP',
     })
     expect(body.requestBody.transactionId).toBe('0xABCDEF')
+  })
+})
+
+describe('isVerifierTransactionPending', () => {
+  it('classifies verifier indexing lag as retryable', () => {
+    expect(isVerifierTransactionPending({ status: 'INVALID: TRANSACTION DOES NOT EXIST' })).toBe(true)
+  })
+
+  it('does not hide other invalid verifier responses', () => {
+    expect(isVerifierTransactionPending({ status: 'INVALID: MALFORMED REQUEST' })).toBe(false)
+    expect(isVerifierTransactionPending(null)).toBe(false)
   })
 })
 
