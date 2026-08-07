@@ -23,6 +23,9 @@ export interface MainnetDirectMintConfig {
 }
 
 const DEFAULTS = {
+  // This is Flare's public mainnet endpoint. It keeps a missing deployment variable from
+  // turning into an invalid URL at the first customer request.
+  flareRpcUrl: 'https://flare-api.flare.network/ext/C/rpc',
   flareContractRegistry: '0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019',
   fdcVerifierBaseUrl: 'https://fdc-verifiers-mainnet.flare.network',
   daLayerBaseUrl: 'https://flr-data-availability.flare.network',
@@ -36,7 +39,7 @@ const DEFAULTS = {
 
 export function readMainnetConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MainnetDirectMintConfig {
   return {
-    rpcUrl: readRequiredEnv(env, 'FLARE_RPC_URL'),
+    rpcUrl: readRpcUrl(env.FLARE_RPC_URL ?? DEFAULTS.flareRpcUrl),
     flareContractRegistry: readAddress(env.FLARE_CONTRACT_REGISTRY ?? DEFAULTS.flareContractRegistry, 'FLARE_CONTRACT_REGISTRY'),
     assetManagerFXRP: readAddress(readRequiredEnv(env, 'ASSET_MANAGER_FXRP'), 'ASSET_MANAGER_FXRP'),
     fxrpToken: readAddress(readRequiredEnv(env, 'FXRP_ADDRESS'), 'FXRP_ADDRESS'),
@@ -52,6 +55,21 @@ export function readMainnetConfigFromEnv(env: NodeJS.ProcessEnv = process.env): 
     pollIntervalMs: readPositiveInteger(env.DIRECT_MINT_POLL_INTERVAL_MS ?? DEFAULTS.pollIntervalMs, 'DIRECT_MINT_POLL_INTERVAL_MS'),
     // Railway (and most PaaS hosts) inject PORT and expect the app to bind to it.
     httpPort: readPositiveInteger(env.DIRECT_MINT_HTTP_PORT ?? env.PORT ?? DEFAULTS.httpPort, 'DIRECT_MINT_HTTP_PORT'),
+  }
+}
+
+function readRpcUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed || /^<.*>$/.test(trimmed)) {
+    throw new InvalidInputError('FLARE_RPC_URL', 'must be a valid HTTPS Flare RPC URL, not a placeholder')
+  }
+
+  try {
+    const url = new URL(trimmed)
+    if (url.protocol !== 'https:') throw new Error('URL must use HTTPS')
+    return url.toString()
+  } catch (error) {
+    throw new InvalidInputError('FLARE_RPC_URL', 'must be a valid HTTPS Flare RPC URL', error)
   }
 }
 

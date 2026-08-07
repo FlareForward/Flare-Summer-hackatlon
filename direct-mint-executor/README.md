@@ -44,7 +44,8 @@ hot wallet, and start with an amount you'd be fine losing entirely while this is
 ## 3. Required environment variables
 
 ```bash
-FLARE_RPC_URL=                          # Flare mainnet RPC
+# Optional: defaults to Flare's public mainnet RPC. Set a dedicated HTTPS endpoint for production.
+FLARE_RPC_URL=https://flare-api.flare.network/ext/C/rpc
 ASSET_MANAGER_FXRP=0x2a3Fe068cD92178554cabcf7c95ADf49B4B0B6A8   # matches apps/web/src/config/vaults.ts
 FXRP_ADDRESS=0xAd552A648C74D49E10027AB8a618A3ad4901c5bE          # matches apps/web/src/config/vaults.ts
 MASTER_ACCOUNT_CONTROLLER=0x434936d47503353f06750Db1A444DBDC5F0AD37c
