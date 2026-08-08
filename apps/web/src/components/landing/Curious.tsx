@@ -3,6 +3,7 @@ const PROTOCOLS = [
   { title: 'Lets your XRP wallet stay in control', sub: 'Smart Accounts' },
   { title: 'Manages the debt', sub: 'Lending & borrowing' },
   { title: 'Keeps your position balanced', sub: 'DEX & LP ranges' },
+  { title: 'Makes a maturity visible', sub: 'Spectra PTs' },
 ];
 
 export function Curious() {
@@ -11,7 +12,7 @@ export function Curious() {
       <div className="landing-section-inner">
         <div className="landing-kicker">
           <p className="landing-eyebrow">For the curious</p>
-          <h2>One tap. Four tools working together.</h2>
+          <h2>One tap. Five tools working together.</h2>
           <p className="landing-lede">
             Behind that one tap, this connects several pieces of Flare&rsquo;s technology to do the work. You&rsquo;ll
             never have to touch any of it directly &mdash; here&rsquo;s what&rsquo;s actually happening.

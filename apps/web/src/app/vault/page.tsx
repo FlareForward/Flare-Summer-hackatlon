@@ -3,6 +3,7 @@ import { ScrollRail } from '@/components/landing/ScrollRail';
 import { Hero } from '@/components/landing/Hero';
 import { Problem } from '@/components/landing/Problem';
 import { Solution } from '@/components/landing/Solution';
+import { FixedYieldSection } from '@/components/landing/FixedYield';
 import { Start } from '@/components/landing/Start';
 import { Curious } from '@/components/landing/Curious';
 import { Why } from '@/components/landing/Why';
@@ -25,6 +26,7 @@ export default function LandingPage() {
         <Hero />
         <Problem />
         <Solution />
+        <FixedYieldSection />
         <Start />
         <Curious />
         <Why />

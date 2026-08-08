@@ -16,7 +16,7 @@ import {
 } from './errors.js'
 import { CallNotAllowedError, TooManyCallsError } from './mainnetErrors.js'
 import { carryVaultDepositAbi, erc20ApproveAbi, spectraPoolAbi, stakedXrpDepositAbi } from './abi.js'
-import type { DirectMintChainClient, MainnetClientLogger } from './fdcClient.js'
+import type { DirectMintChainClient, MainnetClientLogger, MintingProofStage } from './fdcClient.js'
 import type { MainnetDirectMintConfig } from './config.js'
 
 export type MainnetExecutorState = 'registered' | 'submitted' | 'error'
@@ -27,6 +27,7 @@ export interface MainnetExecutorRecord {
   calls: UserOperationCall[]
   error?: XrplRailError
   sender: Address
+  stage?: MintingProofStage
   state: MainnetExecutorState
   txHash?: Hex
   userOpBytes: Hex
@@ -115,6 +116,7 @@ export class MainnetDirectMintExecutor implements DirectMintExecutorLike {
     try {
       observation = await this.client.findMintingProof({ userOpHash: record.userOpHash })
     } catch (error) {
+      record.stage = this.client.getStage(record.userOpHash)
       const wrapped = wrapError('findMintingProof', error)
       // An attested-memo mismatch is a real correctness violation - retrying will not resolve it.
       // Everything else here (XRPL RPC hiccups, FDC verifier/DA layer transport failures) is the
@@ -131,6 +133,8 @@ export class MainnetDirectMintExecutor implements DirectMintExecutorLike {
       })
       return cloneRecord(record)
     }
+
+    record.stage = this.client.getStage(record.userOpHash)
 
     if (!observation) {
       return cloneRecord(record)

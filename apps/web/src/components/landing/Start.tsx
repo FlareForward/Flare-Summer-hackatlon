@@ -51,7 +51,7 @@ export function Start() {
         </div>
         <div className="landing-start-cta">
           <Link className="btn btn-primary" href="/app">
-            Connect &amp; start earning
+            Explore both yield paths
           </Link>
         </div>
       </div>

@@ -4,7 +4,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Flare Vault Gateway',
-  description: 'Use XRP wallets to access Flare carry and LP vaults through Flare Smart Accounts.',
+  description: 'Use XRP wallets to access managed LP/carry and fixed-term Spectra yield through Flare Smart Accounts.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

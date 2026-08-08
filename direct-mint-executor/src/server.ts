@@ -55,6 +55,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, executor
     sendJson(res, 200, {
       ok: true,
       state: record.state,
+      stage: record.stage,
       attempts: record.attempts,
       sender: record.sender,
       txHash: record.txHash,

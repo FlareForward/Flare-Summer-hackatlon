@@ -7,6 +7,7 @@ const SECTIONS = [
   { id: 'hero', label: 'Start' },
   { id: 'problem', label: 'Problem' },
   { id: 'solution', label: 'Fix' },
+  { id: 'fixed-term', label: 'Fixed term' },
   { id: 'start', label: 'Get in' },
   { id: 'curious', label: 'Details' },
   { id: 'why', label: 'Why' },
@@ -72,7 +73,7 @@ export function ScrollRail() {
           Flare Vault
         </a>
         <Link className="btn btn-primary btn-sm" href="/app">
-          Start earning
+          Explore yield paths
         </Link>
       </div>
     </>

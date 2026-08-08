@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { RangeGlyph } from './RangeGlyph';
+import { FixedYieldCard } from './FixedYield';
 import { useLandingVaultReadout } from './useLandingVaultReadout';
 
 export function Hero() {
@@ -11,15 +12,14 @@ export function Hero() {
     <section id="hero" className="landing-section landing-hero">
       <div className="landing-section-inner landing-hero-grid">
         <div className="landing-hero-copy">
-          <p className="landing-eyebrow">Flare Vault &middot; autopilot engaged</p>
+          <p className="landing-eyebrow">Flare yield &middot; choose your lane</p>
           <h1>Your XRP, working while you don&rsquo;t.</h1>
           <p className="landing-lede">
-            Most people earning crypto yield spend hours watching charts and guessing when to move their money.
-            This vault does that watching for you &mdash; automatically, every day, using the same rules every time.
+            Choose a managed LP position that keeps working in the background, or choose a fixed-term Principal Token with a rate visible before you sign.
           </p>
           <div className="landing-hero-actions">
             <Link className="btn btn-primary" href="/app">
-              Start earning
+              Explore yield paths
             </Link>
             <a className="btn-text" href="https://youtu.be/RA7R3PjkLA0" target="_blank" rel="noreferrer">
               Watch the 90-second story
@@ -29,7 +29,7 @@ export function Hero() {
 
         <div className="landing-hero-hud">
           <div className="landing-hero-hud-label">
-            <span>FXRP/USDT0 vault readout</span>
+            <span>Managed LP / carry readout</span>
             <span className="landing-hud-live">Live</span>
           </div>
           <div className="landing-range-figure">
@@ -49,6 +49,7 @@ export function Hero() {
               <span style={{ color: 'var(--l-good)' }}>{readout.aprLabel}</span>
             </div>
           </div>
+          <FixedYieldCard compact />
         </div>
       </div>
     </section>

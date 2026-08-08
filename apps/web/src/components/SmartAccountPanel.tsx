@@ -7,6 +7,7 @@ import { flare } from '@/config/wagmi';
 import { algebraPoolAbi, assetManagerAbi, carryVaultAbi, erc20Abi, masterAccountControllerAbi } from '@/config/abis';
 import {
   ASSET_MANAGER_FXRP,
+  FLARE_EXPLORER,
   FXRP_ADDRESS,
   FXRP_USDT0_POOL,
   MASTER_ACCOUNT_CONTROLLER,
@@ -44,6 +45,30 @@ const DEFAULT_FEE_DROPS = '12';
 const XRPL_MEMO_HEX_LIMIT = 2048;
 const DIRECT_MINT_EXECUTOR_URL = process.env.NEXT_PUBLIC_DIRECT_MINT_EXECUTOR_URL;
 
+// Order matches the executor's real pipeline (direct-mint-executor/src/fdcClient.ts getStage +
+// executor.ts submit step) - each step only lights up once the executor has actually reached it,
+// not on a timer.
+const EXECUTOR_STEP_LABELS = [
+  'Executor observed your XRPL payment',
+  'FDC attestation fee paid',
+  'Waiting for FDC data-availability proof',
+  'Executed on Flare',
+] as const;
+
+function executorStageIndex(status?: ExecutorStatus): number {
+  if (!status) return 0;
+  if (status.state === 'submitted') return 4;
+  switch (status.stage) {
+    case 'awaiting_proof':
+      return 2;
+    case 'awaiting_attestation':
+      return 1;
+    case 'awaiting_payment':
+    default:
+      return 0;
+  }
+}
+
 type DirectMintMode = 'inline' | 'hash' | 'split';
 
 type DirectMintPayment = {
@@ -61,6 +86,17 @@ type TxDialogItem = {
   status: 'pending' | 'signed' | 'failed';
   txid?: string;
   error?: string;
+};
+
+// Mirrors direct-mint-executor's GET /status response (server.ts) - stage is derived from the
+// executor's real internal pipeline state, not guessed from elapsed time.
+type ExecutorStage = 'awaiting_payment' | 'awaiting_attestation' | 'awaiting_proof';
+type ExecutorStatus = {
+  state: 'registered' | 'submitted' | 'error';
+  stage?: ExecutorStage;
+  attempts: number;
+  txHash?: Hex;
+  error?: { code: string; message: string };
 };
 
 export function SmartAccountPanel({ vault }: Props) {
@@ -82,6 +118,7 @@ export function SmartAccountPanel({ vault }: Props) {
   const [directMintDestination, setDirectMintDestination] = useState('');
   const [directMintUserOp, setDirectMintUserOp] = useState<Hex | undefined>();
   const [directMintMode, setDirectMintMode] = useState<DirectMintMode | undefined>();
+  const [executorStatus, setExecutorStatus] = useState<ExecutorStatus | undefined>();
   const [xamanPayload, setXamanPayload] = useState<XamanPayload | undefined>();
   const [xamanStatus, setXamanStatus] = useState<XamanPayloadStatus | undefined>();
   const [activeXamanTxItemId, setActiveXamanTxItemId] = useState<string | undefined>();
@@ -121,6 +158,10 @@ export function SmartAccountPanel({ vault }: Props) {
 
   function xrplTxUrl(txid: string) {
     return `https://xrpscan.com/tx/${txid}`;
+  }
+
+  function flareTxUrl(txHash: string) {
+    return `${FLARE_EXPLORER}/tx/${txHash}`;
   }
   const publicClient = useMemo(
     () =>
@@ -595,6 +636,7 @@ export function SmartAccountPanel({ vault }: Props) {
     setDirectMintDestination('');
     setDirectMintUserOp(undefined);
     setDirectMintMode(undefined);
+    setExecutorStatus(undefined);
 
     const prepared = await prepareDirectMintEntry();
     if (!prepared) {
@@ -760,6 +802,7 @@ export function SmartAccountPanel({ vault }: Props) {
     setDirectMintDestination('');
     setDirectMintUserOp(undefined);
     setDirectMintMode(undefined);
+    setExecutorStatus(undefined);
     setStatus('Resolving Smart Account, nonce, and direct-mint fees...');
 
     try {
@@ -1127,6 +1170,29 @@ export function SmartAccountPanel({ vault }: Props) {
   }, [executing, personalAccount]);
 
   useEffect(() => {
+    if (!executing || directMintMode !== 'hash' || !callHash || !DIRECT_MINT_EXECUTOR_URL) return undefined;
+    let cancelled = false;
+    async function poll() {
+      try {
+        const response = await fetch(`${DIRECT_MINT_EXECUTOR_URL}/status?userOpHash=${callHash}`);
+        if (!response.ok) return;
+        const json = await response.json();
+        if (!cancelled && json.ok) {
+          setExecutorStatus({ state: json.state, stage: json.stage, attempts: json.attempts, txHash: json.txHash, error: json.error });
+        }
+      } catch {
+        // transient polling error, retry on next tick
+      }
+    }
+    poll();
+    const interval = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [executing, directMintMode, callHash]);
+
+  useEffect(() => {
     if (!executing || !baseline) return;
     const changed =
       (baseline.fxrp !== undefined && fxrpBalance !== undefined && fxrpBalance !== baseline.fxrp) ||
@@ -1277,6 +1343,34 @@ export function SmartAccountPanel({ vault }: Props) {
               </div>
             ))}
           </div>
+
+          {directMintMode === 'hash' ? (
+            <div className="tx-dialog-list">
+              {(() => {
+                const reached = executorStageIndex(executorStatus);
+                const errored = executorStatus?.state === 'error';
+                return EXECUTOR_STEP_LABELS.map((label, index) => {
+                  const stepStatus = errored && index === reached ? 'failed' : index < reached ? 'signed' : 'pending';
+                  return (
+                    <div className={`tx-dialog-row ${stepStatus}`} key={label}>
+                      <div>
+                        <span>{stepStatus === 'signed' ? 'done' : stepStatus}</span>
+                        <strong>{label}</strong>
+                        {stepStatus === 'failed' && executorStatus?.error ? (
+                          <p className="tx-error">{executorStatus.error.message}</p>
+                        ) : null}
+                      </div>
+                      {index === EXECUTOR_STEP_LABELS.length - 1 && executorStatus?.txHash ? (
+                        <a href={flareTxUrl(executorStatus.txHash)} target="_blank" rel="noreferrer" className="primary-link">
+                          {shortAddress(executorStatus.txHash)}
+                        </a>
+                      ) : null}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {xamanPayload ? (

@@ -28,8 +28,8 @@ export function Solution() {
           <h2>The data makes the rules.</h2>
           <p className="landing-lede">
             Instead of you watching charts all day, a set of rules does it for you &mdash; deciding when to move
-            your money and how much risk to take. Same rules, every time, so the strategy is easy to trust and
-            easy to test.
+            your money and how much risk to take. Or choose a Spectra maturity and review the rate before you sign.
+            Two clear paths, one XRPL wallet.
           </p>
         </div>
       </div>

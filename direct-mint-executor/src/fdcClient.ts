@@ -60,6 +60,16 @@ export interface MintingProofResult {
   proof: DirectMintingProof
 }
 
+/**
+ * Where a userOp currently sits in the findMintingProof pipeline, derived from real internal
+ * state (not guessed from attempt counts) so callers can show honest progress instead of a bare
+ * spinner:
+ *   - awaiting_payment: haven't observed the matching XRPL payment yet
+ *   - awaiting_attestation: payment observed, verifier request built, fee not yet paid
+ *   - awaiting_proof: attestation fee paid, waiting on the DA layer to publish the proof
+ */
+export type MintingProofStage = 'awaiting_payment' | 'awaiting_attestation' | 'awaiting_proof'
+
 export interface MainnetClientLogger {
   info(message: string, context?: Record<string, unknown>): void
   error(message: string, context?: Record<string, unknown>): void
@@ -79,6 +89,7 @@ export interface DirectMintChainClient {
   resolvePoolIbt(pool: Address): Promise<Address>
   findMintingProof(input: { userOpHash: Hex }): Promise<MintingProofResult | null>
   submitExecuteDirectMintingWithData(input: { data: Hex, proof: DirectMintingProof, value: bigint }): Promise<Hex>
+  getStage(userOpHash: Hex): MintingProofStage
 }
 
 interface FdcRequestState {
@@ -149,6 +160,14 @@ export class MainnetDirectMintClient implements DirectMintChainClient {
       functionName: 'coins',
       args: [0n],
     })
+  }
+
+  /** Derived from findMintingProof's actual internal state - reflects real progress, not a guess. */
+  getStage(userOpHash: Hex): MintingProofStage {
+    const state = this.requestState.get(userOpHash.toLowerCase())
+    if (!state) return 'awaiting_payment'
+    if (state.roundId === undefined) return 'awaiting_attestation'
+    return 'awaiting_proof'
   }
 
   /**

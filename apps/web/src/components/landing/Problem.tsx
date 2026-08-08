@@ -22,7 +22,7 @@ export function Problem() {
           <p className="landing-lede">
             If you&rsquo;ve tried to make crypto grow, you know the drill: check the price, wonder if you should
             move your money, worry you waited too long, do it all again tomorrow. It&rsquo;s exhausting &mdash;
-            and one bad guess can cost you.
+            and one bad guess can cost you. You can hand the watching to a managed vault, or choose a fixed-term rate and a maturity up front.
           </p>
           <ul className="landing-questions">
             {QUESTIONS.map((question) => (

@@ -8,7 +8,7 @@ import {
 import { UserOperationHashMismatchError, MintRecipientMismatchError, ExecutorTimeoutError, AttestedMemoMismatchError, UserOperationNotRegisteredError } from '../src/errors.js'
 import { carryVaultDepositAbi, erc20ApproveAbi, spectraPoolAbi, stakedXrpDepositAbi } from '../src/abi.js'
 import { MainnetDirectMintExecutor } from '../src/executor.js'
-import type { DirectMintChainClient, DirectMintingProof, MintingProofResult } from '../src/fdcClient.js'
+import type { DirectMintChainClient, DirectMintingProof, MintingProofResult, MintingProofStage } from '../src/fdcClient.js'
 import type { MainnetDirectMintConfig } from '../src/config.js'
 
 const FXRP = addressFromLabel('fxrp-token')
@@ -60,9 +60,14 @@ class FakeClient implements DirectMintChainClient {
   /** When set, findMintingProof throws this instead of returning. Cleared automatically after `throwTimes` calls (default: every call). */
   findMintingProofError: Error | null = null
   throwTimes = Infinity
+  stage: MintingProofStage = 'awaiting_payment'
 
   async resolvePoolIbt(): Promise<Address> {
     return this.ibt
+  }
+
+  getStage(): MintingProofStage {
+    return this.stage
   }
 
   async findMintingProof(): Promise<MintingProofResult | null> {
@@ -295,6 +300,21 @@ describe('MainnetDirectMintExecutor poll/submit state machine', () => {
 
     expect(record.state).toBe('submitted')
     expect(record.txHash).toBe(client.submittedTxHash)
+  })
+
+  it('records the real pipeline stage from the client on each poll, not a guess', async () => {
+    const client = new FakeClient()
+    client.stage = 'awaiting_attestation'
+    const executor = new MainnetDirectMintExecutor({ client, config: fixtureConfig(), logger: silentLogger })
+    const { userOpBytes, userOpHash } = buildUserOp(validSpectraCalls())
+    await executor.registerUserOperation({ userOpBytes, userOpHash, declaredVault: POOL })
+
+    const record = await executor.pollOnce(userOpHash)
+    expect(record.stage).toBe('awaiting_attestation')
+
+    client.stage = 'awaiting_proof'
+    const record2 = await executor.pollOnce(userOpHash)
+    expect(record2.stage).toBe('awaiting_proof')
   })
 
   it('stays registered (keeps polling) while no observation is available', async () => {

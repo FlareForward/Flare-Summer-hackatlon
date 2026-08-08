@@ -393,6 +393,90 @@
   font-weight: 600;
 }
 
+.landing-fixed-yield-card {
+  border: 1px solid rgba(129, 170, 255, 0.42);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(41, 53, 105, 0.38), rgba(20, 16, 44, 0.72));
+  padding: 20px;
+}
+
+.landing-hero-hud > .landing-fixed-yield-card { margin-top: 22px; }
+.landing-fixed-yield-card.compact { padding: 16px; }
+
+.landing-fixed-yield-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: var(--l-text-faint);
+  font-family: var(--l-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.landing-fixed-yield-label { color: #b6c9ff; }
+.landing-fixed-yield-live { color: var(--l-good); }
+
+.landing-fixed-yield-card h3 {
+  margin-top: 12px;
+  color: var(--l-text);
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.landing-fixed-yield-card.compact h3 { font-size: 17px; }
+
+.landing-fixed-yield-copy,
+.landing-fixed-yield-note,
+.landing-fixed-yield-fallback {
+  margin-top: 8px;
+  color: var(--l-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.landing-fixed-yield-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.landing-fixed-yield-stats > div {
+  border-top: 1px solid rgba(129, 170, 255, 0.24);
+  padding-top: 9px;
+}
+
+.landing-fixed-yield-stats span {
+  display: block;
+  color: var(--l-text-faint);
+  font-family: var(--l-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.landing-fixed-yield-stats strong {
+  display: block;
+  margin-top: 5px;
+  color: #d2ddff;
+  font-size: 14px;
+}
+
+.landing-fixed-yield-card > .btn-text {
+  display: inline-block;
+  margin-top: 18px;
+  color: #b6c9ff;
+}
+
+/* ---------- fixed-term yield section ---------- */
+
+.landing-fixed-yield {
+  background: linear-gradient(180deg, rgba(13, 18, 43, 0.96), var(--l-bg));
+  border-top: 1px solid rgba(129, 170, 255, 0.2);
+}
+
 /* ---------- shared section copy ---------- */
 
 .landing-kicker { max-width: 620px; }
